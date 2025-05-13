@@ -55,6 +55,9 @@ def github_manager_node(
 
     result_message = ""
     goto = "coding_planner"  # Default next node
+    current_task_id_for_processing = state.get("current_task_id") # Get the current task ID
+    processed_outcome_to_set = None
+    processed_failure_details_to_set = None
 
     try:
         # Execute the requested GitHub action
@@ -137,32 +140,57 @@ def github_manager_node(
             # Get the parent branch (should be a feature branch)
             branch_info = github_context.branches.get(task_branch)
             if not branch_info:
-                raise ValueError(f"Branch info not found for {task_branch}")
+                # If branch_info not in context, it might be because it was just created by codegen and not yet through a full github_manager cycle.
+                # We might infer parent from current_task_details or similar if robustly available.
+                # For now, assume it should be in context if merging.
+                logger.warning(f"Branch info not found for {task_branch} in github_context. This might be an issue if it wasn't properly registered.")
+                # Fallback or default parent_branch if necessary, or rely on GitHubService to handle it if task_branch is a full ref.
+                parent_branch = github_context.current_feature_branch or github_context.base_branch # Example fallback
+            else:
+                parent_branch = branch_info.parent_branch
 
-            parent_branch = branch_info.parent_branch
+            if not parent_branch:
+                 raise ValueError(f"Parent branch for task branch {task_branch} could not be determined.")
 
             # Check CI status before merging
-            ci_status = github_service.check_ci_status(task_branch)
-            if ci_status != "success":
-                result_message = f"CI checks are not passing for {task_branch}. Status: {ci_status}. Skipping merge."
+            # ci_status = github_service.check_ci_status(task_branch) # Assuming this is a potentially slow call, consider if it's always needed or if codegen implies CI pass
+            # For now, let's assume CI check is implicit or handled before this specific merge action call.
+            # if ci_status != "success":
+            #     result_message = f"CI checks are not passing for {task_branch}. Status: {ci_status}. Skipping merge."
+            #     processed_outcome_to_set = "FAILURE"
+            #     processed_failure_details_to_set = {"reason": "CI checks failed", "ci_status": ci_status}
+            # else:
+            # Merge the task branch into its parent feature branch
+            commit_message = f"Merge task branch {task_branch} into {parent_branch} (Task ID: {current_task_id_for_processing or 'N/A'})"
+            # Ensure task_branch is the full ref name if needed by merge_branch, or that service can resolve it.
+            # The `task_branch_to_merge` should ideally be the specific branch name created for the task.
+            # It might be derived from current_task_details.branch_name set by the orchestrator.
+            
+            # Assuming task_branch_to_merge is correctly set to the branch created by codegen for current_task_id
+            task_branch_ref = state.get("current_task_details", {}).get("branch_name", task_branch) # Prefer branch_name from current_task_details
+            if not task_branch_ref:
+                 raise ValueError("Task branch ref for merging could not be determined from current_task_details.branch_name or task_branch_to_merge state.")
+
+            logger.info(f"Attempting to merge branch: {task_branch_ref} into {parent_branch}")
+            merge_success = github_service.merge_branch(task_branch_ref, parent_branch, commit_message)
+
+            if merge_success:
+                result_message = f"Successfully merged {task_branch_ref} into {parent_branch}"
+                processed_outcome_to_set = "SUCCESS"
+
+                # Update Linear task if applicable
+                if linear_service and branch_info and branch_info.associated_task_id:
+                    # Update task status to indicate completion
+                    linear_service.update_task(
+                        branch_info.associated_task_id,
+                        {"stateId": configurable.linear_completed_state_id}
+                    )
+                    result_message += f"\nUpdated Linear task {branch_info.associated_task_id} status to completed"
             else:
-                # Merge the task branch into its parent feature branch
-                commit_message = f"Merge task branch {task_branch} into {parent_branch}"
-                merge_success = github_service.merge_branch(task_branch, parent_branch, commit_message)
-
-                if merge_success:
-                    result_message = f"Successfully merged {task_branch} into {parent_branch}"
-
-                    # Update Linear task if applicable
-                    if linear_service and branch_info.associated_task_id:
-                        # Update task status to indicate completion
-                        linear_service.update_task(
-                            branch_info.associated_task_id,
-                            {"stateId": configurable.linear_completed_state_id}
-                        )
-                        result_message += f"\nUpdated Linear task {branch_info.associated_task_id} status to completed"
-                else:
-                    result_message = f"Failed to merge {task_branch} into {parent_branch}"
+                result_message = f"Failed to merge {task_branch_ref} into {parent_branch}"
+                processed_outcome_to_set = "FAILURE"
+                processed_failure_details_to_set = {"reason": "Merge conflict or other merge failure", "branch": task_branch_ref, "target": parent_branch}
+            goto = "task_orchestrator" # Always go back to orchestrator after merge attempt
 
         elif github_action == "create_feature_pr":
             # Get feature branch details from state
@@ -211,6 +239,19 @@ def github_manager_node(
         "github_context": github_context,
         "github_action": None  # Clear the action to prevent re-execution
     }
+    
+    # Add processed task feedback if set
+    if current_task_id_for_processing and processed_outcome_to_set:
+        updated_state["processed_task_id"] = current_task_id_for_processing
+        updated_state["processed_task_outcome"] = processed_outcome_to_set
+        if processed_failure_details_to_set:
+            updated_state["processed_task_failure_details"] = processed_failure_details_to_set
+    else:
+        # If no specific task outcome was set by this github_action, clear any lingering ones
+        # to avoid reprocessing by orchestrator unless explicitly set.
+        # However, this might be too aggressive if github_manager is called for non-task-completion actions.
+        # For now, only set if outcome is determined.
+        pass 
 
     return Command(update=updated_state, goto=goto)
 

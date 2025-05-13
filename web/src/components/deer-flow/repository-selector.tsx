@@ -62,6 +62,17 @@ export function RepositorySelector() {
   const handleRepositoryChange = (value: string) => {
     if (value === "add-new") {
       setAddDialogOpen(true);
+    } else if (value === "new-project") {
+      // Set currentRepository to null to indicate a new project.
+      // The main application logic that starts the backend workflow
+      // will need to interpret a null currentRepository as a signal
+      // to use an empty or default workspace_path for a new project.
+      useRepositoryStore.setState({ currentRepository: null });
+      // saveRepositories(); // Persist this null state if necessary for your app's logic
+      // Typically, the app would immediately use this null state to configure the workflow run
+      // without needing it to be the "saved" current repo for next page load.
+      // If you want "New Project" to be a sticky selection, then uncomment saveRepositories().
+      // For now, assume it's a trigger for a new workflow run.
     } else {
       setCurrentRepository(value);
     }
@@ -193,6 +204,12 @@ export function RepositorySelector() {
               <div className="flex items-center gap-2 text-primary">
                 <PlusCircle className="h-4 w-4" />
                 <span>Add new repository</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="new-project">
+              <div className="flex items-center gap-2 text-primary">
+                <PlusCircle className="h-4 w-4" />
+                <span>Add new project</span>
               </div>
             </SelectItem>
           </SelectContent>

@@ -3,7 +3,7 @@
 
 import json
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Dict, Any, Optional, List
 import os
 import random
 
@@ -12,6 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.types import Command, interrupt
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain.prompts import PromptTemplate
 
 from src.agents.agents import coder_agent, research_agent, create_agent
 
@@ -31,6 +32,7 @@ from src.utils.json_utils import repair_json_output
 
 from .types import State
 from ..config import SEARCH_MAX_RESULTS, SELECTED_SEARCH_ENGINE, SearchEngine
+from src.tools.linear_service import LinearService
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +112,14 @@ def coding_planner_node(
     prompt_state_input["failed_task_details"] = failed_task_details
     # Add any other relevant fields from state that the prompt might need
     # messages = apply_prompt_template("coding_planner", prompt_state_input, configurable)
-    # For now, let's construct messages more directly to highlight new inputs:
     
+    # Format prompt using the global constant
+    # The old local PLANNING_PROMPT_TEMPLATE_V2 definition will be removed.
+    prompt = PromptTemplate.from_template(CODING_PLANNER_TASK_LIST_PROMPT) # Use the global constant
+
+    # Prepare variables for the prompt
+    failed_task_details_str = "N/A"
+
     instruction_message = "Generate a detailed task plan based on the provided Product Requirements Document (PRD)."
     if existing_project_summary:
         instruction_message += " Consider the existing project context." 
@@ -144,41 +152,116 @@ def coding_planner_node(
 
     try:
         # Expecting LLM to output a JSON list of task dictionaries
-        # Example Task Dict: {id, description, dependencies: List[id], branch_name, status_in_plan, execute_alone}
-        parsed_tasks = json.loads(repair_json_output(full_response))
-        if not isinstance(parsed_tasks, list):
-            raise ValueError("LLM response for tasks is not a list.")
+        # Each task dict should include: id, name, description, dependencies, acceptance_criteria,
+        # estimated_effort_hours, assignee_suggestion, status_live (initially Todo), execute_alone, max_retries.
+        repaired_json_str = repair_json_output(full_response) # Use repair_json_output here
+        parsed_tasks_from_llm = json.loads(repaired_json_str) # And here
+
+        if not isinstance(parsed_tasks_from_llm, list): # Check if it's a list
+            # If not a list, check if it's a dict with a "tasks" key
+            if isinstance(parsed_tasks_from_llm, dict) and "tasks" in parsed_tasks_from_llm and isinstance(parsed_tasks_from_llm["tasks"], list):
+                logger.info("LLM returned a dictionary with a 'tasks' key, extracting list from there.")
+                parsed_tasks_from_llm = parsed_tasks_from_llm["tasks"]
+            else:
+                logger.error(f"LLM response for tasks is not a list, nor a dict with a 'tasks' list. Full response: {full_response[:500]}")
+                raise ValueError("LLM response for tasks is not in the expected format (list of tasks or {'tasks': [...]}).")
         
         tasks_definition = []
-        for i, task_data in enumerate(parsed_tasks):
+        for i, task_data in enumerate(parsed_tasks_from_llm): # Iterate over the potentially extracted list
             if not isinstance(task_data, dict):
-                logger.warning(f"Task item {i} is not a dictionary: {task_data}")
-                # Optionally skip or add a default error task
+                logger.warning(f"Task item {i} is not a dictionary: {task_data}. Skipping.")
                 continue
             
-            # Basic validation/defaulting (can be more robust with Pydantic model for TaskDefinitionItem)
-            task_id = task_data.get("id", f"task_{i+1}")
-            description = task_data.get("description", "No description provided.")
+            # Validate and default essential fields
+            task_id = task_data.get("id")
+            if not task_id or not isinstance(task_id, str):
+                task_id = f"task_{plan_iterations}_{i+1:03d}" # More unique default ID
+                logger.warning(f"Task item {i} missing or invalid 'id'. Defaulting to '{task_id}'.")
+
+            task_name = task_data.get("name")
+            if not task_name or not isinstance(task_name, str):
+                task_name = f"Unnamed Task {task_id}"
+                logger.warning(f"Task item {i} missing or invalid 'name'. Defaulting to '{task_name}'.")
+
+            description = task_data.get("description")
+            if not description or not isinstance(description, str):
+                description = "No description provided."
+                logger.warning(f"Task item {i} missing or invalid 'description'. Defaulting to 'No description provided.'.")
+
+            # Get other fields with defaults
             dependencies = task_data.get("dependencies", [])
-            branch_name = task_data.get("branch_name", f"task/{task_id}")
-            status_in_plan = task_data.get("status_in_plan", "todo")
+            acceptance_criteria = task_data.get("acceptance_criteria", [])
+            estimated_effort_hours = task_data.get("estimated_effort_hours", 0) # Default to 0 or None
+            assignee_suggestion = task_data.get("assignee_suggestion", "any")
+            status_live = task_data.get("status_live", "Todo") # Initial status
             execute_alone = task_data.get("execute_alone", False)
+            max_retries = task_data.get("max_retries", 1) # Default from previous logic
+            
+            # branch_name and status_in_plan from existing code might be planner's suggestions
+            # Let's keep them for now if planner is intended to suggest them.
+            suggested_branch_name = task_data.get("branch_name", f"task/{task_id.replace('_', '-')[:20]}") # Cleaner default
+            planner_status_suggestion = task_data.get("status_in_plan", "todo")
+
+
+            if not isinstance(dependencies, list) or not all(isinstance(dep, str) for dep in dependencies):
+                logger.warning(f"Task {task_id} has invalid dependencies format: {dependencies}. Defaulting to empty list.")
+                dependencies = []
+            if not isinstance(acceptance_criteria, list) or not all(isinstance(ac, str) for ac in acceptance_criteria):
+                logger.warning(f"Task {task_id} has invalid acceptance_criteria format: {acceptance_criteria}. Defaulting to empty list.")
+                acceptance_criteria = []
+
 
             tasks_definition.append({
                 "id": task_id,
+                "name": task_name,
                 "description": description,
                 "dependencies": dependencies,
-                "branch_name": branch_name,
-                "status_in_plan": status_in_plan,
+                "acceptance_criteria": acceptance_criteria,
+                "estimated_effort_hours": estimated_effort_hours,
+                "assignee_suggestion": assignee_suggestion,
+                "status_live": status_live, # This will be the initial live status for task_orchestrator
                 "execute_alone": execute_alone,
-                # Add other fields from your Task Dict spec if needed
+                "max_retries": max_retries,
+                "suggested_branch_name": suggested_branch_name, # Planner's suggestion
+                "planner_status_suggestion": planner_status_suggestion # Planner's suggested internal status
             })
         
-        if not tasks_definition:
-             logger.warning("LLM parsed response resulted in an empty task list.")
-             # Handle empty task list - maybe raise error or default to __end__?
+        if not tasks_definition and parsed_tasks_from_llm: # If list was not empty but parsing all items failed
+             logger.error("LLM provided tasks, but all failed detailed parsing. Resulting in empty task list.")
+             # This case will lead to an error message below if full_response was not empty.
 
-        logger.info(f"Successfully parsed {len(tasks_definition)} tasks.")
+        if not tasks_definition: # Handles both empty LLM list and parsing failures leading to empty list
+             logger.warning(f"LLM parsed response resulted in an empty task list. Raw response: {full_response[:500]}")
+             # Fallback: attempt to use the old plan parsing if it looks like the old format
+             try:
+                 plan_obj = Plan.from_json(repaired_json_str) # Try old format as a last resort
+                 logger.warning("LLM response was empty or invalid for new task format. Attempting to parse as old Plan format. This is deprecated.")
+                 # Convert Plan object to tasks_definition (simplified)
+                 for i_old, step in enumerate(plan_obj.steps):
+                     tasks_definition.append({
+                         "id": f"old_task_{plan_iterations}_{i_old:03d}",
+                         "name": step.title,
+                         "description": step.description,
+                         "dependencies": [], 
+                         "acceptance_criteria": [step.validation] if step.validation else [],
+                         "estimated_effort_hours": 0,
+                         "assignee_suggestion": "any",
+                         "status_live": "Todo",
+                         "execute_alone": False,
+                         "max_retries": 1,
+                         "suggested_branch_name": f"task/old-{step.title.lower().replace(' ','-')[:20]}",
+                         "planner_status_suggestion": "todo"
+                     })
+                 if not tasks_definition: # If old format also yielded nothing
+                     raise ValueError("Old plan format conversion also resulted in no tasks.")
+                 logger.info(f"Successfully converted {len(tasks_definition)} tasks from old Plan format.")
+             except Exception as old_format_e:
+                 logger.error(f"Failed to parse as new tasks format and also failed to parse/convert from old Plan format: {old_format_e}. Raising error to go to __end__.")
+                 # Raise the error to be caught by the outer try-except, which goes to __end__
+                 raise ValueError(f"Could not parse tasks from LLM, and fallback to old format also failed. Original error: {old_format_e}. LLM raw: {full_response[:200]}") from e
+
+
+        logger.info(f"Successfully parsed and validated {len(tasks_definition)} tasks.")
 
         updated_state = {
             "messages": state["messages"] + [AIMessage(content=full_response, name="coding_planner")],
@@ -623,34 +706,40 @@ def coding_coordinator_node(
     logger.info(f"Coding Coordinator (PRD) LLM raw response: {response_content}")
 
     # --- Parse LLM Response ---
-    # This part needs robust parsing for the PRD document and the next_step directive.
-    # Example: LLM might output JSON, or use specific keywords.
-    # Let's assume LLM outputs:
-    # { "updated_prd": "...", "next_action": "human_prd_review" }
-    # Or it might be plain text with markers, e.g.:
-    # PRD_DOCUMENT_START
-    # ... new prd ...
-    # PRD_DOCUMENT_END
-    # NEXT_ACTION: human_prd_review
-    
-    # Simulated parsing:
-    parsed_prd_document = response_content # Simplistic: assume LLM just returns the new PRD
-    parsed_next_step = "human_prd_review" # Default if not parsed
-    
-    if "NEXT_ACTION: human_prd_review".lower() in response_content.lower():
-        parsed_next_step = "human_prd_review"
-    elif "NEXT_ACTION: context_gatherer".lower() in response_content.lower():
-        parsed_next_step = "context_gatherer"
-    elif "NEXT_ACTION: prd_complete".lower() in response_content.lower(): # LLM thinks PRD is good
-        # This doesn't mean auto-approved. It still goes to human_prd_review,
-        # but the prompt to human might be "LLM considers this PRD complete. Please review for approval."
-        parsed_next_step = "human_prd_review" 
-        logger.info("LLM suggests PRD is complete, routing for final human review/approval.")
-    else:
-        # Fallback if no clear directive, assume it needs more review
-        logger.warning(f"No clear NEXT_ACTION in LLM response for PRD. Defaulting to human_prd_review. Response: {response_content[:200]}")
-        parsed_next_step = "human_prd_review"
+    # Expecting JSON output from LLM: {"updated_prd": "...", "next_action": "..."}
+    parsed_prd_document = prd_document # Default to original PRD if parsing fails
+    parsed_next_step = "human_prd_review" # Default next step
+    ai_message_content = response_content # Default AI message is the raw response
 
+    try:
+        repaired_json_str = repair_json_output(response_content)
+        parsed_output = json.loads(repaired_json_str)
+        
+        if isinstance(parsed_output, dict):
+            parsed_prd_document = parsed_output.get("updated_prd", prd_document)
+            next_action_from_llm = parsed_output.get("next_action")
+
+            if next_action_from_llm in ["human_prd_review", "context_gatherer", "prd_complete"]:
+                parsed_next_step = next_action_from_llm
+                if parsed_next_step == "prd_complete": # LLM signals PRD is internally complete
+                    logger.info("LLM suggests PRD is complete. Routing for final human review/approval via human_prd_review.")
+                    parsed_next_step = "human_prd_review" # Still goes to human for approval
+            else:
+                logger.warning(f"LLM provided an unrecognized next_action: '{next_action_from_llm}'. Defaulting to human_prd_review.")
+                # Keep parsed_prd_document as updated by LLM if possible
+            
+            # For the AIMessage, we can use a summary or the structured data if it's clean
+            ai_message_content = f"[PRD Coordinator Update]\nNext Action Proposed: {parsed_next_step}\nPRD (first 100 chars): {parsed_prd_document[:100]}..."
+            logger.info(f"Successfully parsed LLM response. Next action: {parsed_next_step}")
+        else:
+            logger.error(f"LLM response was valid JSON but not a dictionary: {parsed_output}. Using defaults.")
+            # ai_message_content already defaults to raw response_content
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON from LLM response for PRD coordinator: {e}. Raw response: {response_content[:500]}...")
+        # ai_message_content already defaults to raw response_content
+        # parsed_prd_document and parsed_next_step remain their defaults
+    
     # Update state
     updated_state_fields = {
         "prd_document": parsed_prd_document,
@@ -847,15 +936,28 @@ def task_orchestrator_node(state: State) -> State:
 
     if processed_id:
         task_updated = False
-        for task in tasks_live:
+        for task in tasks_live: # Iterate by index to safely modify/replace items if needed for retry counts
             if task.get("id") == processed_id:
                 if processed_outcome == "SUCCESS":
                     task["status_live"] = "CompletedSuccess"
                     logger.info(f"Task '{processed_id}' marked as CompletedSuccess.")
                 elif processed_outcome == "FAILURE":
-                    task["status_live"] = "CompletedFailure"
-                    # TODO: Handle retries or forward_failure_to_planner based on processed_failure_details
-                    logger.error(f"Task '{processed_id}' marked as CompletedFailure. Details: {processed_failure_details}")
+                    max_retries = task.get("max_retries", 1) # Default to 1 retry if not specified
+                    current_retry_count = task.get("current_retry_count", 0)
+                    
+                    logger.error(f"Task '{processed_id}' failed. Attempt {current_retry_count + 1} of {max_retries + 1}. Details: {processed_failure_details}")
+                    
+                    if current_retry_count < max_retries:
+                        task["current_retry_count"] = current_retry_count + 1
+                        task["status_live"] = "Todo" # Mark for retry by setting back to Todo
+                        logger.info(f"Task '{processed_id}' scheduled for retry ({task['current_retry_count']}/{max_retries} retries used). Status set to Todo.")
+                        # No need to set orchestrator_next_step here, normal loop will pick it up if ready
+                    else:
+                        task["status_live"] = "CompletedCriticalFailure" # New status for permanent failure after retries
+                        logger.error(f"Task '{processed_id}' has reached max retries ({max_retries}) and failed critically.")
+                        # This task will now be handled by the logic that checks for overall completion or deadlocks
+                        # If a critical failure occurs, we might want to immediately try to forward to planner
+                        # This part of the logic will be handled below in the "Set next step based on findings" block
                 else:
                     logger.warning(f"Task '{processed_id}' had an unknown outcome: {processed_outcome}. Status not changed.")
                 task_updated = True
@@ -863,14 +965,65 @@ def task_orchestrator_node(state: State) -> State:
         if not task_updated:
             logger.warning(f"Processed task ID '{processed_id}' not found in tasks_live.")
 
-    # --- Find the next task to dispatch (simple version: first "Todo" task, no dependency check yet) ---
+    # --- Find the next task to dispatch ---
     next_task_to_dispatch = None
-    for task in tasks_live:
-        if task.get("status_live") == "Todo":
-            # TODO: Implement dependency checking: check task.get("dependencies", [])
-            # TODO: Implement "execute_alone" logic
-            next_task_to_dispatch = task
+    
+    # First, check if an "execute_alone" task is currently InProgress.
+    # If so, no other task can be dispatched.
+    active_execute_alone_task_in_progress = False
+    for t in tasks_live:
+        if t.get("status_live") == "InProgress" and t.get("execute_alone") is True:
+            logger.info(f"Task {t.get('id')} is an 'execute_alone' task and is InProgress. No other tasks will be dispatched.")
+            active_execute_alone_task_in_progress = True
             break
+
+    if not active_execute_alone_task_in_progress:
+        for task in tasks_live:
+            if task.get("status_live") == "Todo":
+                # Check dependencies
+                dependencies = task.get("dependencies", [])
+                dependencies_met = True
+                if dependencies:
+                    for dep_id in dependencies:
+                        dep_task_found = False
+                        for t_dep in tasks_live:
+                            if t_dep.get("id") == dep_id:
+                                dep_task_found = True
+                                if t_dep.get("status_live") != "CompletedSuccess":
+                                    dependencies_met = False
+                                    logger.debug(f"Task {task.get('id')} dependency {dep_id} not met (status: {t_dep.get('status_live')}).")
+                                    break
+                                break
+                        if not dep_task_found:
+                            logger.warning(f"Task {task.get('id')} has an unknown dependency ID: {dep_id}. Assuming dependency not met.")
+                            dependencies_met = False
+                            break
+                        if not dependencies_met:
+                            break
+                
+                if dependencies_met:
+                    task_is_execute_alone = task.get("execute_alone", False)
+                    can_dispatch_this_task = True
+
+                    if task_is_execute_alone:
+                        # If this task is execute_alone, check if any *other* task is InProgress
+                        for other_task in tasks_live:
+                            if other_task.get("status_live") == "InProgress" and other_task.get("id") != task.get("id"):
+                                logger.info(f"Cannot dispatch 'execute_alone' task {task.get('id')} because other task {other_task.get('id')} is InProgress.")
+                                can_dispatch_this_task = False
+                                break
+                    
+                    if can_dispatch_this_task:
+                        logger.info(f"Task {task.get('id')} is ready. Selecting for dispatch.")
+                        next_task_to_dispatch = task
+                        break # Found a ready task
+                    else:
+                        logger.info(f"Task {task.get('id')} is 'Todo' and dependencies met, but cannot be dispatched due to 'execute_alone' constraints.")
+                else:
+                    logger.info(f"Task {task.get('id')} is 'Todo' but dependencies are not met yet.")
+            # If next_task_to_dispatch is found, no need to check further tasks in this iteration
+            if next_task_to_dispatch:
+                break
 
     # --- Set next step based on findings ---
     updated_state_dict = state.copy()
@@ -885,35 +1038,63 @@ def task_orchestrator_node(state: State) -> State:
         updated_state_dict["codegen_task_description"] = next_task_to_dispatch.get("description") # For initiate_codegen_node
         updated_state_dict["orchestrator_next_step"] = "dispatch_task_for_codegen"
     else:
-        # No more tasks marked "Todo". Check if all are "CompletedSuccess".
+        # No more tasks marked "Todo" that are ready. 
+        # Check for overall completion or critical failures needing re-planning.
         all_successfully_completed = True
-        if not tasks_live: # No tasks to begin with
+        critically_failed_task_to_replan = None
+
+        if not tasks_live:
             logger.info("No tasks found in tasks_live. Considering project complete.")
-            all_successfully_completed = True 
         else:
             for task in tasks_live:
-                if task.get("status_live") != "CompletedSuccess":
+                task_status = task.get("status_live")
+                if task_status == "CompletedCriticalFailure":
+                    logger.warning(f"Task '{task.get('id')}' is in CompletedCriticalFailure state.")
+                    critically_failed_task_to_replan = task # Prioritize re-planning critical failures
+                    all_successfully_completed = False # A critical failure means not all successful
+                    break # Found a critical failure, stop checking others for now
+                elif task_status != "CompletedSuccess":
                     all_successfully_completed = False
-                    # TODO: If there are tasks in other states (e.g., CompletedFailure not yet handled for re-plan), 
-                    # this logic might need to be more nuanced. For now, any non-success means not all done.
-                    if task.get("status_live") == "CompletedFailure":
-                        logger.warning(f"Found task '{task.get('id')}' with status CompletedFailure. Project not fully complete or needs re-planning.")
-                        # Placeholder: For now, if there's a failure, we don't consider it all_tasks_complete.
-                        # Later, this could trigger "forward_failure_to_planner"
-                        # updated_state_dict["orchestrator_next_step"] = "forward_failure_to_planner"
-                        # updated_state_dict["failed_task_details"] = task # Send this task for re-planning
-                        # For this simplified version, let's assume it blocks completion
-                        break # Exit loop, all_successfully_completed is False
+                    # If any task is still Todo, InProgress, or non-critically failed, we are not done
+                    # and not necessarily in a re-plan state unless all those are blocked by a critical failure.
+                    # This break is removed so we check all tasks for a potential critical failure first.
             
-        if all_successfully_completed:
+        if critically_failed_task_to_replan:
+            logger.error(f"Task '{critically_failed_task_to_replan.get('id')}' failed critically after retries. Forwarding to planner.")
+            updated_state_dict["failed_task_details"] = critically_failed_task_to_replan # Send this task's details for re-planning
+            # Add more context from processed_failure_details if available and relevant to this critically_failed_task
+            # This assumes processed_failure_details corresponds to the *last* failure attempt of this task.
+            # We might need to store last failure details directly within the task object in tasks_live.
+            if critically_failed_task_to_replan.get("id") == processed_id and processed_outcome == "FAILURE":
+                 updated_state_dict["failed_task_details"]["last_known_failure_details"] = processed_failure_details
+            
+            updated_state_dict["orchestrator_next_step"] = "forward_failure_to_planner"
+        elif all_successfully_completed:
             logger.info("All tasks successfully completed.")
             updated_state_dict["orchestrator_next_step"] = "all_tasks_complete"
         else:
-            # If not dispatching and not all complete, what to do? Could be failures or deadlocks.
-            logger.warning("No new task to dispatch, but not all tasks are successfully completed. Possible failures or deadlock.")
-            # For now, default to __end__ if stuck. Proper handling needs failure/deadlock logic.
-            # This could also be where "forward_failure_to_planner" is set if unhandled failures exist.
-            updated_state_dict["orchestrator_next_step"] = "__end__" # Placeholder, might need re-planning route
+            # No new task to dispatch, not all complete, and no critical failure identified for immediate re-plan.
+            # This could mean tasks are still InProgress, or Todo but blocked (deadlock).
+            logger.warning("No new task to dispatch, not all tasks successfully completed, and no immediate critical failure for re-planning. Possible deadlock or tasks still running.")
+            # TODO: Implement deadlock detection. If deadlock, set orchestrator_next_step = "forward_failure_to_planner" with deadlock info.
+            # For now, if tasks are still InProgress elsewhere (e.g. execute_alone), this state is fine.
+            # If truly stuck (all Todo but none ready, and nothing InProgress), then it's an issue.
+            is_any_task_in_progress = any(t.get("status_live") == "InProgress" for t in tasks_live)
+            if not is_any_task_in_progress:
+                logger.error("DEADLOCK DETECTED (heuristic): No tasks InProgress, but not all are CompletedSuccess and no new tasks can be dispatched.")
+                # For now, just end. A more robust solution would be to send to planner.
+                # updated_state_dict["orchestrator_next_step"] = "forward_failure_to_planner"
+                # updated_state_dict["failed_task_details"] = {"reason": "Deadlock detected in task orchestration"}
+                updated_state_dict["orchestrator_next_step"] = "__end__" # Fallback
+            else:
+                logger.info("Tasks are still InProgress or waiting for dependencies. Orchestrator will loop.")
+                # If an execute_alone task is running, orchestrator_next_step will be re-evaluated in next cycle.
+                # If other tasks are InProgress, this path means we didn't find a new one to dispatch *additionally*.
+                # The graph will loop back to task_orchestrator implicitly if no explicit goto is set by a Command from a node.
+                # However, our orchestrator always sets orchestrator_next_step. So if it's not dispatch, not complete, not replan -> default to end for now.
+                # This case might need to point back to itself if it's waiting for an InProgress task that is NOT execute_alone
+                # For now, the existing __end__ fallback is okay. The key is the external graph loops back.
+                updated_state_dict["orchestrator_next_step"] = "__end__" # Fallback for now
 
     # Clear processed task feedback from state
     updated_state_dict["processed_task_id"] = None
@@ -930,6 +1111,15 @@ def codegen_success_node(state: State) -> State:
     updated_state = state.copy()
     success_message = f"Codegen task completed successfully. Result: {state.get('codegen_task_result')}"
     updated_state["messages"] = updated_state["messages"] + [AIMessage(content=success_message)]
+    
+    # Feedback for Orchestrator
+    current_task_id = state.get("current_task_id")
+    if current_task_id:
+        updated_state["processed_task_id"] = current_task_id
+        updated_state["processed_task_outcome"] = "SUCCESS" # Codegen itself was a success
+        updated_state["processed_task_failure_details"] = None # Clear any previous failure details for this task stage
+    else:
+        logger.warning("codegen_success_node: current_task_id not found in state. Cannot set orchestrator feedback.")
     return updated_state
 
 def codegen_failure_node(state: State) -> State:
@@ -937,6 +1127,19 @@ def codegen_failure_node(state: State) -> State:
     updated_state = state.copy()
     failure_message = f"Codegen task failed. Status: {state.get('codegen_task_status')}. Reason: {state.get('codegen_task_result')}"
     updated_state["messages"] = updated_state["messages"] + [AIMessage(content=failure_message)]
+
+    # Feedback for Orchestrator
+    current_task_id = state.get("current_task_id")
+    if current_task_id:
+        updated_state["processed_task_id"] = current_task_id
+        updated_state["processed_task_outcome"] = "FAILURE"
+        updated_state["processed_task_failure_details"] = {
+            "reason": "Codegen process failed",
+            "codegen_status": state.get("codegen_task_status"),
+            "codegen_result": state.get("codegen_task_result")
+        }
+    else:
+        logger.warning("codegen_failure_node: current_task_id not found in state. Cannot set orchestrator feedback.")
     return updated_state
 
 # Placeholder for a more sophisticated repo check
@@ -981,23 +1184,28 @@ def initial_context_node(state: State, config: RunnableConfig) -> Command[Litera
     logger.info(f"Repo status: empty={repo_is_empty}, summary='{repo_summary}'")
 
     # Simulated Linear task check
-    # For simulation, let's randomly decide if a Linear task exists
-    linear_task_exists_simulated = random.choice([True, False])
+    if repo_is_empty:
+        linear_task_exists_simulated = False # For a new (empty) repo, assume no existing Linear tasks
+        logger.info("Simulated Linear task check: Repo is empty, assuming no existing Linear tasks.")
+    else:
+        # For existing repos, simulate randomly for now
+        linear_task_exists_simulated = random.choice([True, False])
+        logger.info(f"Simulated Linear task check (existing repo): Randomly determined task_exists={linear_task_exists_simulated}")
+
     simulated_linear_tasks = []
-    if linear_task_exists_simulated and not repo_is_empty: # Let's say Linear tasks usually exist for non-empty repos
+    if linear_task_exists_simulated: # This block will now only run if repo is not empty AND random choice was True
         simulated_linear_tasks = [
             {"id": "TASK-123", "title": "Implement feature X", "status": "Todo"},
             {"id": "TASK-124", "title": "Fix bug Y", "status": "In Progress"},
         ]
-        linear_summary_str = f"Found {len(simulated_linear_tasks)} simulated Linear tasks."
-        logger.info(f"Simulated Linear task check: {linear_summary_str}")
-    elif linear_task_exists_simulated:
-        simulated_linear_tasks = [{"id": "TASK-001", "title": "Initial project setup", "status": "Done"}]
-        linear_summary_str = "Found 1 simulated initial Linear task."
-        logger.info(f"Simulated Linear task check: {linear_summary_str}")
-    else:
-        linear_summary_str = "No simulated Linear tasks found."
-        logger.info("Simulated Linear task check: No existing Linear task.")
+        linear_summary_str = f"Found {len(simulated_linear_tasks)} simulated Linear tasks for existing project."
+        logger.info(f"Simulated Linear task details: {linear_summary_str}")
+    elif not repo_is_empty and not linear_task_exists_simulated:
+        linear_summary_str = "No simulated Linear tasks found for this existing project."
+        logger.info(linear_summary_str)
+    else: # repo_is_empty is True, so linear_task_exists_simulated is False
+        linear_summary_str = "No Linear tasks found (new project)."
+        logger.info(linear_summary_str)
 
     project_summary_dict = {
         "repository_status": {
@@ -1058,40 +1266,181 @@ def human_prd_review_node(state: State) -> State: # Should return State, feedbac
     return state # Return the current state, expecting prd_review_feedback to be set by the interrupt resolution
 
 # === New Linear Integration Node ===
-def linear_integration_node(state: State) -> Command[Literal["task_orchestrator"]]:
-    """Simulates integrating the PRD and task definitions with Linear.
-    Populates tasks_live with simulated Linear IDs and statuses.
+def linear_integration_node(state: State, config: RunnableConfig) -> Command[Literal["task_orchestrator"]]: # Added config
+    """Integrates the PRD and task definitions with Linear by creating tasks.
+    Populates tasks_live with Linear IDs, URLs, and other task details.
     """
-    logger.info("Linear Integration Node: Simulating Linear sync...")
+    logger.info("Linear Integration Node: Syncing with Linear...")
+    configurable = Configuration.from_runnable_config(config)
 
-    prd_document = state.get("prd_document")
+    prd_document = state.get("prd_document") # May be useful for context or parent task
     tasks_definition = state.get("tasks_definition")
-
-    if not prd_document or not tasks_definition:
-        logger.error("PRD document or tasks_definition missing. Cannot sync with Linear.")
-        return Command(
-            update={"messages": state["messages"] + [AIMessage(content="[System Error: PRD or Task Definition missing for Linear sync.]", name="linear_integration")]},
-            goto="task_orchestrator" # Or an error handling node
-        )
-
-    logger.info(f"Simulating creation/update of PRD in Linear: {prd_document[:100]}...")
-
     tasks_live = []
-    for i, task_def in enumerate(tasks_definition):
-        simulated_linear_id = f"LIN-{random.randint(1000, 9999)}-{i+1}"
-        live_task = task_def.copy()
-        live_task["linear_id"] = simulated_linear_id
-        live_task["status_live"] = "Todo"
-        live_task["linear_url"] = f"https://simulated.linear.app/task/{simulated_linear_id}"
-        tasks_live.append(live_task)
-        logger.info(f"Simulated creation of task '{task_def.get('description','N/A')[:50]}...' in Linear with ID {simulated_linear_id}")
+    integration_messages = []
 
-    logger.info(f"Successfully simulated Linear sync. {len(tasks_live)} tasks processed.")
+    if not configurable.linear_api_key or not configurable.linear_team_id:
+        logger.warning("Linear API key or Team ID not configured. Skipping actual Linear integration. Falling back to simulation.")
+        # Fallback to simulation logic (simplified from original)
+        if tasks_definition:
+            for i, task_def in enumerate(tasks_definition):
+                sim_linear_id = f"SIMLIN-{random.randint(1000, 9999)}"
+                task_live_item = {
+                    **task_def,
+                    "linear_id": sim_linear_id,
+                    "linear_url": f"https://linear.app/simulated/{sim_linear_id}",
+                }
+                tasks_live.append(task_live_item)
+            integration_messages.append(f"Simulated Linear integration: {len(tasks_live)} tasks prepared for tasks_live due to missing Linear config.")
+        else:
+            logger.warning("No tasks_definition found to integrate with Linear (simulation mode).")
+            integration_messages.append("No tasks defined for Linear integration (simulation mode).")
+    elif tasks_definition:
+        try:
+            linear_service = LinearService(
+                api_key=configurable.linear_api_key,
+                team_id=configurable.linear_team_id
+            )
+            logger.info(f"Attempting to create {len(tasks_definition)} tasks in Linear team {configurable.linear_team_id}.")
+            
+            # Optionally, create a parent PRD/Epic task in Linear first if prd_document exists
+            # prd_linear_task = None
+            # if prd_document: # And maybe a flag like state.get("create_prd_linear_epic", False)
+            #     try:
+            #         prd_title = f"Project PRD: {state.get('project_name', 'Untitled Project')}"
+            #         # Truncate PRD for description or use a summary
+            #         prd_description = prd_document[:1500] + ("..." if len(prd_document) > 1500 else "") 
+            #         prd_linear_task = linear_service.create_task(title=prd_title, description=prd_description, is_epic=True) # Assuming an is_epic param or similar
+            #         integration_messages.append(f"Created parent PRD task in Linear: {prd_linear_task.id} ({prd_linear_task.url})")
+            #     except Exception as e_epic:
+            #         logger.error(f"Failed to create parent PRD task in Linear: {e_epic}")
+            #         integration_messages.append(f"Error creating parent PRD task in Linear: {e_epic}")
 
-    return Command(
-        update={
-            "tasks_live": tasks_live,
-            "messages": state["messages"] + [AIMessage(content=f"[System Note: PRD and {len(tasks_live)} tasks simulated in Linear.]", name="linear_integration")]
-        },
-        goto="task_orchestrator"
-    )
+            for i, task_def in enumerate(tasks_definition):
+                try:
+                    task_title = task_def.get("name", f"Untitled Task {i+1}")
+                    task_description = task_def.get("description", "No description provided.")
+                    # TODO: Consider adding acceptance criteria to description or as sub-tasks if Linear supports
+                    # TODO: Handle task_def.get("dependencies") - Linear API might allow setting relations post-creation
+                    
+                    # Create the task in Linear
+                    linear_task = linear_service.create_task(
+                        title=task_title,
+                        description=task_description,
+                        # parent_id=prd_linear_task.id if prd_linear_task else None 
+                        # Other fields like assignee, priority might be set here if available in task_def
+                        # and supported by linear_service.create_task
+                    )
+                    
+                    task_live_item = {
+                        **task_def, # Copy all fields from tasks_definition
+                        "linear_id": linear_task.id,
+                        "linear_url": linear_task.url,
+                        # status_live is already part of task_def, Linear starts new tasks in a default state
+                    }
+                    tasks_live.append(task_live_item)
+                    integration_messages.append(f"Successfully created Linear task: {linear_task.id} - '{task_title}'.")
+                    logger.info(f"Created Linear task {linear_task.id} for task_def '{task_def.get('id')}'.")
+                except Exception as e_task:
+                    logger.error(f"Failed to create Linear task for task_def '{task_def.get('id', task_title)}': {e_task}")
+                    integration_messages.append(f"Error creating Linear task for '{task_def.get('id', task_title)}': {e_task}. Task will be missing Linear ID.")
+                    # Add the task_def to tasks_live anyway, but without linear_id/url, or with error markers
+                    tasks_live.append({
+                        **task_def,
+                        "linear_integration_error": str(e_task)
+                    })
+            logger.info(f"Linear integration complete. {len(tasks_live)} items in tasks_live.")
+
+        except Exception as e_service:
+            logger.error(f"Failed to initialize LinearService or during batch operation: {e_service}")
+            integration_messages.append(f"Major error during Linear integration: {e_service}. Falling back to tasks_definition without IDs.")
+            # Fallback: use tasks_definition as tasks_live but without Linear IDs
+            if tasks_definition:
+                tasks_live = [ {**td, "linear_integration_error": "Service init failed"} for td in tasks_definition]
+            else:
+                tasks_live = [] # Ensure it's an empty list if tasks_definition was also empty
+    else:
+        logger.warning("No tasks_definition found to integrate with Linear.")
+        integration_messages.append("No tasks defined for Linear integration.")
+
+    final_ai_message = "Linear Integration Summary:\n" + "\n".join(integration_messages)
+    updated_state = {
+        "tasks_live": tasks_live,
+        "messages": state.get("messages", []) + [AIMessage(content=final_ai_message, name="linear_integration")]
+    }
+    return Command(update=updated_state, goto="task_orchestrator")
+
+# === New Global Prompt for Coding Planner ===
+CODING_PLANNER_TASK_LIST_PROMPT = """You are an expert software architect. Your goal is to create a detailed, actionable task plan based on the provided Product Requirements Document (PRD).
+Consider the existing project context, conversation history, and any specific failed tasks that require re-planning.
+
+Inputs:
+- PRD: {prd_document}
+- Existing Project Summary: {existing_project_summary}
+- Conversation History (for context): {conversation_history}
+- Failed Task Details (for re-planning, if any): {failed_task_details_str}
+
+Your output MUST be a single JSON list of task objects. Do NOT include any text or markdown formatting outside of this JSON list.
+Each task object in the list MUST conform to the following structure:
+{{
+  "id": "string (globally unique task identifier, e.g., task_001)",
+  "name": "string (concise and descriptive name for the task)",
+  "description": "string (detailed explanation of what needs to be done for this task, including specific deliverables or outcomes)",
+  "dependencies": ["list of strings (IDs of other tasks this task depends on, empty if none)"],
+  "acceptance_criteria": ["list of strings (specific, measurable criteria for task completion)"],
+  "estimated_effort_hours": "integer (optional, estimated hours to complete the task, e.g., 4)",
+  "assignee_suggestion": "string (optional, suggested role or type of assignee, e.g., frontend_dev, backend_dev, any)",
+  "status_live": "string (initial status, should usually be 'Todo')",
+  "execute_alone": "boolean (true if this task must be executed alone without other parallel tasks, default false)",
+  "max_retries": "integer (how many times this task should be retried on failure, e.g., 1)",
+  "suggested_branch_name": "string (optional, a suggested Git branch name for this task, e.g., task/setup-database-schema)",
+  "planner_status_suggestion": "string (optional, your internal status suggestion for this task in the plan, e.g., todo, needs_clarification)"
+}}
+
+Example of the expected JSON list output:
+```json
+[
+  {{
+    "id": "task_001",
+    "name": "Setup Database Schema",
+    "description": "Define and implement the initial database schema based on Appendix A of the PRD. Include tables for Users, Products, and Orders.",
+    "dependencies": [],
+    "acceptance_criteria": [
+      "Users table created with all specified fields.",
+      "Products table created with all specified fields.",
+      "Orders table created with all specified fields and foreign keys."
+    ],
+    "estimated_effort_hours": 3,
+    "assignee_suggestion": "backend_dev",
+    "status_live": "Todo",
+    "execute_alone": false,
+    "max_retries": 1,
+    "suggested_branch_name": "task/setup-db-schema",
+    "planner_status_suggestion": "todo"
+  }},
+  {{
+    "id": "task_002",
+    "name": "Implement User Authentication API",
+    "description": "Develop API endpoints for user registration, login, and logout. Refer to PRD section 3.2 for requirements.",
+    "dependencies": ["task_001"],
+    "acceptance_criteria": [
+      "POST /register endpoint works as specified.",
+      "POST /login endpoint authenticates users and returns a token.",
+      "POST /logout endpoint invalidates user session."
+    ],
+    "estimated_effort_hours": 5,
+    "assignee_suggestion": "backend_dev",
+    "status_live": "Todo",
+    "execute_alone": false,
+    "max_retries": 1,
+    "suggested_branch_name": "task/user-auth-api",
+    "planner_status_suggestion": "todo"
+  }}
+]
+```
+
+Ensure all task IDs are unique within the generated plan.
+Focus on breaking down the PRD into actionable development tasks that can be implemented and tested.
+If re-planning due to a failed task ({failed_task_details_str}), integrate the necessary revisions smoothly, focusing on the failed task and its direct dependents or prerequisites. You may need to modify existing tasks, add new ones, or remove obsolete ones related to the failure.
+
+Now, generate the JSON task list.
+"""
