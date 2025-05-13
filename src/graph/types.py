@@ -15,15 +15,15 @@ class State(MessagesState):
 
     # Runtime Variables
     locale: str = "en-US"
-    observations: list[str] = []
-    plan_iterations: int = 0
-    current_plan: Plan | str = None
+    observations: Annotated[list[str], operator.add] = []
+    plan_iterations: Annotated[int, operator.add] = 0
+    current_plan: Optional[Plan | str] = None  # Changed from Annotated with None to simple Optional
     final_report: str = ""
-    auto_accepted_plan: bool = False
-    enable_background_investigation: bool = True
-    background_investigation_results: str = None
-    create_workspace: bool = False
-    repo_path: str = None
+    auto_accepted_plan: Annotated[bool, operator.or_] = False  # Use Annotated with operator.or_ to handle multiple updates
+    enable_background_investigation: Annotated[bool, operator.or_] = True  # Use Annotated with operator.or_ to handle multiple updates
+    background_investigation_results: Optional[str] = None  # Added Optional type
+    create_workspace: Annotated[bool, operator.or_] = False  # Use Annotated with operator.or_ to handle multiple updates
+    repo_path: Optional[str] = None  # Added Optional type
 
     # --- GitHub specific state from previous iterations ---
     feature_branch_name: Optional[str] = None
@@ -36,16 +36,24 @@ class State(MessagesState):
     codegen_task_id: Optional[str] = None
     codegen_task_status: Optional[str] = None # PENDING, RUNNING, SUCCESS, FAILURE_CODING, FAILURE_REVIEW, TIMEOUT
     codegen_task_result: Optional[Any] = None # Could be code, error message, etc.
-    codegen_poll_attempts: int = 0
+    codegen_poll_attempts: int = 0  # Simple integer, not Annotated
 
     # --- Interrupt feedback ---
     interrupt_feedback: Optional[str] = None # General purpose feedback from an interrupt
+    clarification_prompt_from_coordinator: Optional[str] = None
 
     # --- Initial Context ---
     initial_repo_check_done: bool = False
     repo_is_empty: bool = True # Default to true, initial_context_node will update
     linear_task_exists: bool = False # Default to false
     initial_context_summary: Optional[str] = None # Consider upgrading or replacing with existing_project_summary
+    # --- New fields for iterative initial context gathering ---
+    pending_initial_context_query: Optional[str] = None
+    awaiting_initial_context_input: bool = False
+    initial_context_approved: bool = False
+    initial_context_iterations: Annotated[int, operator.add] = 0  # Keep Annotated with operator.add
+    last_initial_context_feedback: Optional[str] = None
+    # --- End new fields ---
 
     # --- Fields from PROJECT_PLAN.md Section II ---
     existing_project_summary: Optional[Dict] = None

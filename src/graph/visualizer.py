@@ -2,96 +2,88 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from pathlib import Path
+import os
+from typing import Optional
+
+# Optional dependencies - try to import, but gracefully handle missing
+try:
+    from IPython.display import Image, display # type: ignore
+    import matplotlib.pyplot as plt # type: ignore
+    import networkx as nx # type: ignore
+    VISUALIZATION_AVAILABLE = True
+except ImportError:
+    VISUALIZATION_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
-def save_graph_visualization(
-    graph,
-    output_path: str = "graph_visualization.png",
-    draw_method: str = "api",
-):
-    """Generates and saves a visualization of the LangGraph graph.
-
+def save_graph_visualization(graph, filename="graph_visualization.png"):
+    """
+    Visualize the graph and save it to a file.
+    
     Args:
-        graph: The compiled LangGraph instance.
-        output_path: The path to save the visualization image.
-        draw_method: Method to use for drawing. 
-                     Supported: "mermaid.ink", "pyppeteer", "graphviz".
-                     "mermaid.ink" is used by default and requires no extra deps for PNG.
-                     "pyppeteer" requires pyppeteer and nest_asyncio.
-                     "graphviz" requires pygraphviz and its system dependencies.
+        graph: The compiled langgraph graph object
+        filename: The name of the output image file
+        
+    Returns:
+        None
+    """
+    if not VISUALIZATION_AVAILABLE:
+        logger.warning("Graph visualization requires matplotlib and networkx. Install with: pip install matplotlib networkx")
+        return
+    
+    try:
+        # Get the NetworkX graph from the langgraph
+        G = graph.get_graph().to_networkx()
+        
+        # Create a figure with a reasonable size
+        plt.figure(figsize=(12, 8))
+        
+        # Use a layout that works well for workflow visualization
+        pos = nx.spring_layout(G, k=0.5, iterations=50)
+        
+        # Draw the nodes
+        nx.draw_networkx_nodes(G, pos, node_size=2000, node_color="lightblue", alpha=0.8)
+        
+        # Draw the edges
+        nx.draw_networkx_edges(G, pos, width=1.5, alpha=0.7, arrows=True, arrowsize=20)
+        
+        # Add node labels
+        nx.draw_networkx_labels(G, pos, font_size=10, font_family="sans-serif")
+        
+        # Add edge labels when available
+        edge_labels = {}
+        for u, v, data in G.edges(data=True):
+            if "condition" in data and data["condition"] != "":
+                edge_labels[(u, v)] = data["condition"]
+        
+        nx.draw_networkx_edge_labels(
+            G, pos, edge_labels=edge_labels, font_size=8
+        )
+        
+        # Remove the axes
+        plt.axis("off")
+        
+        # Save the figure
+        plt.tight_layout()
+        plt.savefig(filename, dpi=300, bbox_inches="tight")
+        logger.info(f"Graph visualization saved to {filename}")
+    except Exception as e:
+        logger.error(f"Error visualizing graph: {e}")
+
+def get_graph_mermaid_syntax(graph):
+    """
+    Generate Mermaid syntax for the graph.
+    
+    Args:
+        graph: The compiled langgraph graph object
+        
+    Returns:
+        str: Mermaid syntax for the graph
     """
     try:
-        if not hasattr(graph, "get_graph") or not callable(graph.get_graph):
-            logger.error(
-                "The provided graph object does not have a callable 'get_graph' method."
-            )
-            return
-
-        runnable_graph = graph.get_graph()
-
-        if draw_method == "api" or draw_method == "pyppeteer":
-            from langchain_core.runnables.graph import MermaidDrawMethod
-
-            method_enum = (
-                MermaidDrawMethod.PYPPETEER
-                if draw_method == "pyppeteer"
-                else MermaidDrawMethod.API
-            )
-            
-            # Ensure nest_asyncio is applied if using pyppeteer in a Jupyter-like environment
-            # This might be needed if the environment blocks the asyncio event loop.
-            if draw_method == "pyppeteer":
-                try:
-                    import nest_asyncio
-                    nest_asyncio.apply()
-                    logger.info("nest_asyncio applied for pyppeteer visualization.")
-                except ImportError:
-                    logger.warning(
-                        "nest_asyncio not found. Pyppeteer might have issues in some environments (e.g., Jupyter notebooks) without it."
-                    )
-                except RuntimeError as e:
-                    if "cannot apply loop ELOOP" in str(e).lower() or "another loop is running" in str(e).lower():
-                         logger.info(f"nest_asyncio: {e}. Assuming already applied or not needed.")
-                    else:
-                        logger.warning(f"Error applying nest_asyncio: {e}")
-
-            image_bytes = runnable_graph.draw_mermaid_png(draw_method=method_enum)
-        elif draw_method == "graphviz":
-            image_bytes = runnable_graph.draw_png()
-        else:
-            logger.error(f"Unsupported draw_method: {draw_method}")
-            return
-
-        with open(output_path, "wb") as f:
-            f.write(image_bytes)
-        logger.info(f"Graph visualization saved to {Path(output_path).resolve()}")
-
-    except ImportError as e:
-        if draw_method == "pyppeteer" and "pyppeteer" in str(e).lower():
-            logger.error(
-                f"ImportError: {e}. Please install pyppeteer (`pip install pyppeteer`) and its browser dependencies to use the 'pyppeteer' draw method."
-            )
-        elif draw_method == "graphviz" and "pygraphviz" in str(e).lower():
-            logger.error(
-                f"ImportError: {e}. Please install pygraphviz (`pip install pygraphviz`) and its system dependencies (e.g., graphviz library) to use the 'graphviz' draw method."
-            )
-        else:
-            logger.error(f"Error during graph visualization: {e}")
+        # Extract Mermaid syntax directly from the graph
+        mermaid_output = graph.get_graph(xray=True).draw_mermaid()
+        return mermaid_output
     except Exception as e:
-        logger.error(f"An unexpected error occurred during graph visualization: {e}")
-
-
-def get_graph_mermaid_syntax(graph) -> str | None:
-    """Returns the Mermaid syntax for the LangGraph graph."""
-    try:
-        if not hasattr(graph, "get_graph") or not callable(graph.get_graph):
-            logger.error(
-                "The provided graph object does not have a callable 'get_graph' method."
-            )
-            return None
-        return graph.get_graph().draw_mermaid()
-    except Exception as e:
-        logger.error(f"An unexpected error occurred while generating Mermaid syntax: {e}")
+        logger.error(f"Error generating Mermaid syntax: {e}")
         return None 

@@ -7,13 +7,13 @@ config:
 graph TD;
 	__start__([<p>__start__</p>]):::first
 	initial_context(initial_context)
-	human_initial_context_review(human_initial_context_review)
+	human_initial_context_review(human_initial_context_review<hr/><small><em>__interrupt = before</em></small>)
 	coding_coordinator(coding_coordinator)
-	human_prd_review(human_prd_review)
+	human_prd_review(human_prd_review<hr/><small><em>__interrupt = before</em></small>)
 	context_gatherer(context_gatherer)
 	research_team(research_team)
 	coding_planner(coding_planner)
-	human_feedback_plan(human_feedback_plan)
+	human_feedback_plan(human_feedback_plan<hr/><small><em>__interrupt = before</em></small>)
 	linear_integration(linear_integration)
 	task_orchestrator(task_orchestrator)
 	initiate_codegen(initiate_codegen)
@@ -66,7 +66,7 @@ graph TD;
 	coding_planner -.-> human_feedback_plan;
 	coding_planner -.-> __end__;
 	human_feedback_plan -.-> coding_planner;
-	human_feedback_plan -.-> linear_integration;
+	human_feedback_plan -.-> task_orchestrator;
 	linear_integration -.-> task_orchestrator;
 	github_manager -.-> task_orchestrator;
 	github_manager -.-> coding_planner;

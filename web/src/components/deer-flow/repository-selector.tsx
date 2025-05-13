@@ -44,6 +44,12 @@ export function RepositorySelector() {
   const [isAddingRepo, setIsAddingRepo] = useState(false);
   const [hasGitHubToken, setHasGitHubToken] = useState(false);
 
+  // State for the new project name dialog
+  const [newProjectNameDialogOpen, setNewProjectNameDialogOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectNameError, setNewProjectNameError] = useState("");
+  const [isSettingNewProjectName, setIsSettingNewProjectName] = useState(false);
+
   // Check for GitHub token and load repositories when component mounts
   useEffect(() => {
     const token = localStorage.getItem('github_token');
@@ -63,16 +69,10 @@ export function RepositorySelector() {
     if (value === "add-new") {
       setAddDialogOpen(true);
     } else if (value === "new-project") {
-      // Set currentRepository to null to indicate a new project.
-      // The main application logic that starts the backend workflow
-      // will need to interpret a null currentRepository as a signal
-      // to use an empty or default workspace_path for a new project.
-      useRepositoryStore.setState({ currentRepository: null });
-      // saveRepositories(); // Persist this null state if necessary for your app's logic
-      // Typically, the app would immediately use this null state to configure the workflow run
-      // without needing it to be the "saved" current repo for next page load.
-      // If you want "New Project" to be a sticky selection, then uncomment saveRepositories().
-      // For now, assume it's a trigger for a new workflow run.
+      // Open the dialog to ask for the new project's name
+      setNewProjectName("");
+      setNewProjectNameError("");
+      setNewProjectNameDialogOpen(true);
     } else {
       setCurrentRepository(value);
     }
@@ -140,6 +140,36 @@ export function RepositorySelector() {
       setNewRepoError(`Failed to add repository: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsAddingRepo(false);
+    }
+  };
+
+  const handleSetNewProjectName = async () => {
+    setNewProjectNameError("");
+    if (!newProjectName.trim()) {
+      setNewProjectNameError("Project name is required.");
+      return;
+    }
+    setIsSettingNewProjectName(true);
+    try {
+      const projectName = newProjectName.trim();
+      const newProjectRepoData: Repository = {
+        id: projectName, 
+        owner: "_new", 
+        name: projectName,
+        fullName: projectName, 
+        url: `local://project/${projectName}`,
+        lastUsed: new Date(),
+      };
+      
+      // Directly set the new project as the current repository in the store
+      useRepositoryStore.setState({ currentRepository: newProjectRepoData, isLoading: false });
+
+      setNewProjectName("");
+      setNewProjectNameDialogOpen(false);
+    } catch (error) {
+      setNewProjectNameError(`Failed to set project name: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsSettingNewProjectName(false);
     }
   };
 
@@ -262,6 +292,47 @@ export function RepositorySelector() {
                 </>
               ) : (
                 "Add Repository"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Project Name Dialog */}
+      <Dialog open={newProjectNameDialogOpen} onOpenChange={setNewProjectNameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Name Your New Project</DialogTitle>
+            <DialogDescription>
+              What would you like to name your new local project? This name will be used to create its workspace.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="new-project-name">Project Name</Label>
+              <Input
+                id="new-project-name"
+                placeholder="e.g., my-awesome-app"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+              />
+              {newProjectNameError && (
+                <p className="text-sm text-destructive">{newProjectNameError}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewProjectNameDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSetNewProjectName} disabled={isSettingNewProjectName}>
+              {isSettingNewProjectName ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Setting...
+                </>
+              ) : (
+                "Set Project Name"
               )}
             </Button>
           </DialogFooter>

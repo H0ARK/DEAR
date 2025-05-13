@@ -19,8 +19,7 @@ def enable_debug_logging():
 
 logger = logging.getLogger(__name__)
 
-# Create the graph
-graph = build_graph()
+# Don't create a global graph instance - create it on demand per run
 
 
 async def run_agent_workflow_async(
@@ -29,6 +28,8 @@ async def run_agent_workflow_async(
     max_plan_iterations: int = 1,
     max_step_num: int = 3,
     enable_background_investigation: bool = True,
+    auto_accepted_plan: bool = False,
+    force_interactive: bool = True,
 ):
     """Run the agent workflow asynchronously with the given user input.
 
@@ -38,6 +39,8 @@ async def run_agent_workflow_async(
         max_plan_iterations: Maximum number of plan iterations
         max_step_num: Maximum number of steps in a plan
         enable_background_investigation: If True, performs web search before planning to enhance context
+        auto_accepted_plan: If True, automatically accepts plans without waiting for user feedback
+        force_interactive: If True, forces interactive mode for brief inputs
 
     Returns:
         The final state after the workflow completes
@@ -47,19 +50,33 @@ async def run_agent_workflow_async(
 
     if debug:
         enable_debug_logging()
+        
+    # Create a fresh graph instance for this run
+    graph = build_graph()
+    
+    # Print the graph's Mermaid diagram for debugging
+    if debug:
+        print("\n=== GRAPH STRUCTURE (MERMAID) ===")
+        print(graph.get_graph(xray=True).draw_mermaid())
+        print("=== END GRAPH STRUCTURE ===\n")
 
     logger.info(f"Starting async workflow with user input: {user_input}")
+    logger.info(f"Auto-accepted plan: {auto_accepted_plan}")
+    logger.info(f"Force interactive mode: {force_interactive}")
     initial_state = {
         # Runtime Variables
         "messages": [{"role": "user", "content": user_input}],
-        "auto_accepted_plan": True,
+        "auto_accepted_plan": auto_accepted_plan,
         "enable_background_investigation": enable_background_investigation,
+        "force_interactive": force_interactive,
+        "prd_iterations": 0,
     }
     config = {
         "configurable": {
             "thread_id": "default",
             "max_plan_iterations": max_plan_iterations,
             "max_step_num": max_step_num,
+            "force_interactive": force_interactive,
             "mcp_settings": {
                 "servers": {
                     "mcp-github-trending": {
@@ -99,4 +116,12 @@ async def run_agent_workflow_async(
 
 
 if __name__ == "__main__":
+    # Import after removing global graph instance
+    from src.graph.coding_builder import visualize_coding_graph
+    
+    # Create a graph just for visualization
+    graph = build_graph()
+    
+    # Visualize and print Mermaid diagram
+    visualize_coding_graph(graph)
     print(graph.get_graph(xray=True).draw_mermaid())

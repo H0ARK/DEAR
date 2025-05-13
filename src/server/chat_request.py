@@ -57,6 +57,9 @@ class ChatRequest(BaseModel):
     enable_background_investigation: Optional[bool] = Field(
         True, description="Whether to get background investigation before plan"
     )
+    force_interactive: Optional[bool] = Field(
+        True, description="Whether to force interactive mode for brief inputs"
+    )
     repository: Optional[RepositoryInfo] = Field(
         None, description="GitHub repository information"
     )

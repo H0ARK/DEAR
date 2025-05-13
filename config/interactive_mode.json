@@ -1,0 +1,8 @@
+{
+  "auto_accepted_plan": false,
+  "max_plan_iterations": 3,
+  "max_step_num": 10,
+  "enable_background_investigation": true,
+  "force_interactive": true,
+  "min_prd_iterations": 2
+}

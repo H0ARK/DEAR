@@ -1,0 +1,55 @@
+2025-05-13 12:38:00,535 - asyncio - DEBUG - Using selector: KqueueSelector
+2025-05-13 12:38:00,637 - __main__ - INFO - Starting coding workflow with user input: Build a simple 2D game in Python
+2025-05-13 12:38:00,637 - __main__ - INFO - Initial state set with simulated_input=True, wait_for_input=False
+2025-05-13 12:38:00,637 - __main__ - INFO - Starting graph execution
+2025-05-13 12:38:00,639 - __main__ - INFO - At step 1
+2025-05-13 12:38:00,639 - __main__ - DEBUG - === DETAILED STATE AT Step 1 ===
+2025-05-13 12:38:00,639 - __main__ - DEBUG - prd_document exists: False
+2025-05-13 12:38:00,639 - __main__ - DEBUG - prd_document length: 0
+2025-05-13 12:38:00,639 - __main__ - DEBUG - prd_status: 
+2025-05-13 12:38:00,639 - __main__ - DEBUG - prd_review_feedback: 
+2025-05-13 12:38:00,639 - __main__ - DEBUG - simulated_input: False
+2025-05-13 12:38:00,639 - __main__ - DEBUG - wait_for_input: True
+2025-05-13 12:38:00,639 - __main__ - DEBUG - current_plan exists: False
+2025-05-13 12:38:00,639 - __main__ - DEBUG - prd_next_step: 
+2025-05-13 12:38:00,639 - __main__ - DEBUG - orchestrator_next_step: 
+2025-05-13 12:38:00,639 - __main__ - DEBUG - === END DETAILED STATE ===
+2025-05-13 12:38:00,639 - src.graph.nodes - INFO - Gathering initial context (repo status, Linear tasks)...
+2025-05-13 12:38:00,639 - src.graph.nodes - INFO - check_repo_status: repo_path is None, treating as a new project.
+2025-05-13 12:38:00,639 - src.graph.nodes - INFO - Repo status: empty=True, summary='New project (no existing repository path specified).'
+2025-05-13 12:38:00,639 - src.graph.nodes - INFO - Simulated Linear task check: Repo is empty, assuming no existing Linear tasks.
+2025-05-13 12:38:00,639 - src.graph.nodes - INFO - No Linear tasks found (new project).
+2025-05-13 12:38:00,640 - __main__ - INFO - At step 2
+2025-05-13 12:38:00,640 - __main__ - DEBUG - === DETAILED STATE AT Step 2 ===
+2025-05-13 12:38:00,641 - __main__ - DEBUG - prd_document exists: False
+2025-05-13 12:38:00,641 - __main__ - DEBUG - prd_document length: 0
+2025-05-13 12:38:00,641 - __main__ - DEBUG - prd_status: 
+2025-05-13 12:38:00,641 - __main__ - DEBUG - prd_review_feedback: 
+2025-05-13 12:38:00,641 - __main__ - DEBUG - simulated_input: False
+2025-05-13 12:38:00,641 - __main__ - DEBUG - wait_for_input: True
+2025-05-13 12:38:00,641 - __main__ - DEBUG - current_plan exists: False
+2025-05-13 12:38:00,641 - __main__ - DEBUG - prd_next_step: 
+2025-05-13 12:38:00,641 - __main__ - DEBUG - orchestrator_next_step: 
+2025-05-13 12:38:00,641 - __main__ - DEBUG - === END DETAILED STATE ===
+2025-05-13 12:38:00,641 - __main__ - DEBUG - Changed keys: messages, initial_repo_check_done, initial_context_summary, repo_is_empty, linear_task_exists, existing_project_summary
+2025-05-13 12:38:00,641 - __main__ - DEBUG - New message (AIMessage): [System Note: Initial context gathered. Repository: New project (no existing repository path specifi...
+2025-05-13 12:38:00,641 - src.graph.nodes - INFO - Waiting for user feedback on initial context...
+2025-05-13 12:38:00,641 - src.graph.nodes - DEBUG - Initial state in human_initial_context_review: False, wait_for_input=True
+2025-05-13 12:38:00,641 - src.graph.nodes - INFO - Coding coordinator is processing...
+2025-05-13 12:38:00,641 - src.graph.nodes - ERROR - Error during interrupt: (Interrupt(value="I've gathered the following initial context about your project:\n\nRepository: New project (no existing repository path specified).. Linear: No Linear tasks found (new project).. Existing project: False\n\nPlease review this information and provide any additional context or clarification about what you'd like to build. This will help me create a more accurate PRD for your project.", resumable=True, ns=['human_initial_context_review:a5e0b3f6-420c-b515-fc0b-3d9f29f5e443'], when='during'),)
+2025-05-13 12:38:00,641 - src.graph.nodes - DEBUG - Coding coordinator state keys: ['messages', 'auto_accepted_plan', 'enable_background_investigation', 'initial_repo_check_done', 'repo_is_empty', 'linear_task_exists', 'initial_context_summary', 'existing_project_summary']
+2025-05-13 12:38:00,641 - src.graph.nodes - WARNING - Falling back to simulated feedback due to interrupt failure
+2025-05-13 12:38:00,641 - src.graph.nodes - DEBUG - simulated_input=False, wait_for_input=True
+2025-05-13 12:38:00,641 - src.graph.nodes - DEBUG - Updated state flags after human_initial_context_review: simulated_input=True, wait_for_input=True
+2025-05-13 12:38:30,142 - src.graph.nodes - INFO - PRD created or updated, routing to human review.
+2025-05-13 12:38:30,143 - src.graph.coding_builder - INFO - route_from_coordinator: Determining next node...
+2025-05-13 12:38:30,143 - src.graph.coding_builder - INFO - route_from_coordinator: simulated_input=False
+2025-05-13 12:38:30,143 - src.graph.coding_builder - INFO - route_from_coordinator: wait_for_input=True
+2025-05-13 12:38:30,143 - src.graph.coding_builder - INFO - route_from_coordinator: prd_document exists=True
+2025-05-13 12:38:30,143 - src.graph.coding_builder - INFO - route_from_coordinator: prd_status=None
+2025-05-13 12:38:30,143 - src.graph.coding_builder - INFO - route_from_coordinator: prd_approved=False
+2025-05-13 12:38:30,143 - src.graph.coding_builder - INFO - route_from_coordinator: prd_next_step=None
+2025-05-13 12:38:30,143 - src.graph.coding_builder - INFO - route_from_coordinator: prd_review_feedback=None
+2025-05-13 12:38:30,143 - src.graph.coding_builder - INFO - No clear routing decision could be made, defaulting to __end__
+2025-05-13 12:38:30,143 - __main__ - ERROR - Error during workflow execution: At key 'auto_accepted_plan': Can receive only one value per step. Use an Annotated key to handle multiple values.
+For troubleshooting, visit: https://python.langchain.com/docs/troubleshooting/errors/INVALID_CONCURRENT_GRAPH_UPDATE

@@ -127,12 +127,14 @@ function MessageListItem({
   const startOfResearch = useMemo(() => {
     return researchIds.includes(messageId);
   }, [researchIds, messageId]);
+  
   if (message) {
     if (
       message.role === "user" ||
       message.agent === "coordinator" ||
       message.agent === "planner" ||
       message.agent === "podcast" ||
+      message.agent === "coordinator_thinking" ||
       startOfResearch
     ) {
       let content: ReactNode;
@@ -164,21 +166,35 @@ function MessageListItem({
           </div>
         );
       } else {
-        content = message.content ? (
-          <div
-            className={cn(
-              "flex w-full px-4",
-              message.role === "user" && "justify-end",
-              className,
-            )}
-          >
-            <MessageBubble message={message}>
-              <div className="flex w-full flex-col">
-                <Markdown animated>{message?.content}</Markdown>
+        // Check if this is a thinking process message
+        const isThinkingProcess = typeof message.content === 'string' && 
+          message.content.startsWith('🤔 THINKING PROCESS 🤔');
+        
+        if (isThinkingProcess && message.content) {
+          content = (
+            <div className="flex w-full px-4">
+              <div className="w-full">
+                <ThinkingBubble content={message.content} />
               </div>
-            </MessageBubble>
-          </div>
-        ) : null;
+            </div>
+          );
+        } else {
+          content = message.content ? (
+            <div
+              className={cn(
+                "flex w-full px-4",
+                message.role === "user" && "justify-end",
+                className,
+              )}
+            >
+              <MessageBubble message={message}>
+                <div className="flex w-full flex-col">
+                  <Markdown animated>{message?.content}</Markdown>
+                </div>
+              </MessageBubble>
+            </div>
+          ) : null;
+        }
       }
       if (content) {
         return (
@@ -463,5 +479,63 @@ function PodcastCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function ThinkingBubble({ content }: { content: string }) {
+  const [isCollapsed, setIsCollapsed] = useState(true);
+
+  // Extract the thinking content after the marker
+  const thinkingContent = useMemo(() => {
+    const headerIndex = content.indexOf('\n\n');
+    if (headerIndex === -1) return content;
+    return content.substring(headerIndex + 2);
+  }, [content]);
+
+  // Get a preview of the thinking content (first few lines)
+  const previewContent = useMemo(() => {
+    const lines = thinkingContent.split('\n');
+    const previewLines = lines.slice(0, 3);
+    return previewLines.join('\n') + (lines.length > 3 ? '...' : '');
+  }, [thinkingContent]);
+
+  return (
+    <div className="bg-slate-700/20 border border-slate-500/30 rounded-md text-slate-300 italic p-3">
+      <div 
+        className="text-xs text-slate-400 mb-2 font-medium flex justify-between cursor-pointer" 
+        onClick={() => setIsCollapsed(!isCollapsed)}
+      >
+        <span>AI&apos;s Thinking Process</span>
+        <span>{isCollapsed ? "⬇️ Show details" : "⬆️ Hide details"}</span>
+      </div>
+      
+      {isCollapsed ? (
+        <div className="text-sm opacity-80">
+          <Markdown>{previewContent}</Markdown>
+          <button 
+            className="text-sm text-blue-400 hover:text-blue-300 mt-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsCollapsed(false);
+            }}
+          >
+            Show more...
+          </button>
+        </div>
+      ) : (
+        <>
+          <Markdown animated>{thinkingContent}</Markdown>
+          <button 
+            className="text-sm text-blue-400 hover:text-blue-300 mt-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsCollapsed(true);
+            }}
+          >
+            Show less
+          </button>
+        </>
+      )}
+    </div>
   );
 }

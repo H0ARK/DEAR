@@ -5,6 +5,8 @@ import base64
 import json
 import logging
 import os
+import random
+import time
 from typing import List, Optional, cast
 from uuid import uuid4
 
@@ -68,6 +70,7 @@ async def chat_stream(request: ChatRequest):
             request.enable_background_investigation,
             request.repository,
             request.create_workspace,
+            request.force_interactive,
         ),
         media_type="text/event-stream",
     )
@@ -79,11 +82,12 @@ async def _astream_workflow_generator(
     max_plan_iterations: int,
     max_step_num: int,
     auto_accepted_plan: bool,
-    interrupt_feedback: str,
+    initial_context_user_feedback: Optional[str],
     mcp_settings: dict,
     enable_background_investigation: bool,
     repository: Optional[RepositoryInfo] = None,
     create_workspace: bool = False,
+    force_interactive: bool = True,
 ):
     input_ = {
         "messages": messages,
@@ -93,101 +97,153 @@ async def _astream_workflow_generator(
         "observations": [],
         "auto_accepted_plan": auto_accepted_plan,
         "enable_background_investigation": enable_background_investigation,
+        "force_interactive": force_interactive,
+        "prd_iterations": 0,
+        "create_workspace": create_workspace,
+        "awaiting_initial_context_input": False,
+        "initial_context_approved": False,
+        "last_initial_context_feedback": None,
     }
 
-    # Add repository information if provided
     if repository:
         input_["repository"] = repository.model_dump()
         logger.info(f"Using repository from UI: {repository.fullName}")
 
-    # Add create_workspace flag - default to False to prioritize repository picker
-    # Only enable workspace creation if explicitly requested AND no repository is selected
-    create_workspace = create_workspace and not repository
-    input_["create_workspace"] = create_workspace
+    if initial_context_user_feedback:
+        logger.info(f"Received user feedback for initial context: {initial_context_user_feedback}")
+        input_["last_initial_context_feedback"] = initial_context_user_feedback
+        input_["awaiting_initial_context_input"] = False
 
-    if create_workspace:
-        logger.info("Workspace creation is enabled")
-    else:
-        logger.info("Workspace creation is disabled")
-    if not auto_accepted_plan and interrupt_feedback:
-        resume_msg = f"[{interrupt_feedback}]"
-        # add the last message to the resume message
-        if messages:
-            resume_msg += f" {messages[-1]['content']}"
-        input_ = Command(resume=resume_msg)
-    async for agent, _, event_data in graph.astream(
-        input_,
-        config={
-            "thread_id": thread_id,
+    current_graph_config = {
+        "thread_id": thread_id,
+        "max_plan_iterations": max_plan_iterations,
+        "max_step_num": max_step_num,
+        "mcp_settings": mcp_settings,
+        "configurable": {
             "max_plan_iterations": max_plan_iterations,
             "max_step_num": max_step_num,
+            "force_interactive": force_interactive,
             "mcp_settings": mcp_settings,
-            "create_workspace": create_workspace,
-            "configurable": {
-                "max_plan_iterations": max_plan_iterations,
-                "max_step_num": max_step_num,
-                "mcp_settings": mcp_settings,
-                "create_workspace": create_workspace,
-                "repo_path": repository.fullName if repository else None,
-                "github_token": os.environ.get("GITHUB_TOKEN", ""),
-            }
-        },
+            "workspace_path": repository.fullName if repository else None,
+            "github_token": os.environ.get("GITHUB_TOKEN", ""),
+        }
+    }
+    
+    async for path, op, data_for_op in graph.astream(
+        input_,
+        config=current_graph_config,
         stream_mode=["messages", "updates"],
         subgraphs=True,
     ):
-        if isinstance(event_data, dict):
-            if "__interrupt__" in event_data:
+        agent_name_for_event = path[0].split(":")[0] if path and path[0] else "deer_ai_handler"
+
+        if op == "update":
+            state_values = data_for_op.get("values", {})
+            if state_values.get("awaiting_initial_context_input") and state_values.get("pending_initial_context_query"):
+                query_content = state_values["pending_initial_context_query"]
+                logger.info(f"Detected pending initial context query: {query_content[:100]}...")
                 yield _make_event(
-                    "interrupt",
+                    "human_context_query",
                     {
                         "thread_id": thread_id,
-                        "id": event_data["__interrupt__"][0].ns[0],
+                        "id": f"initial_context_query-{random.randint(1000, 9999)}",
+                        "agent": "deer_ai_handler",
                         "role": "assistant",
-                        "content": event_data["__interrupt__"][0].value,
-                        "finish_reason": "interrupt",
-                        "options": [
-                            {"text": "Edit plan", "value": "edit_plan"},
-                            {"text": "Start research", "value": "accepted"},
-                        ],
+                        "content": query_content,
+                        "query_type": "initial_context_review",
+                        "finish_reason": "human_query",
                     },
                 )
+                continue
             continue
-        message_chunk, _ = cast(
-            tuple[AIMessageChunk, dict[str, any]], event_data
-        )
-        event_stream_message: dict[str, any] = {
-            "thread_id": thread_id,
-            "agent": agent[0].split(":")[0],
-            "id": message_chunk.id,
-            "role": "assistant",
-            "content": message_chunk.content,
-        }
-        if message_chunk.response_metadata.get("finish_reason"):
-            event_stream_message["finish_reason"] = message_chunk.response_metadata.get(
-                "finish_reason"
-            )
-        if isinstance(message_chunk, ToolMessage):
-            # Tool Message - Return the result of the tool call
-            event_stream_message["tool_call_id"] = message_chunk.tool_call_id
-            yield _make_event("tool_call_result", event_stream_message)
-        else:
-            # AI Message - Raw message tokens
-            if message_chunk.tool_calls:
-                # AI Message - Tool Call
-                event_stream_message["tool_calls"] = message_chunk.tool_calls
-                event_stream_message["tool_call_chunks"] = (
-                    message_chunk.tool_call_chunks
-                )
-                yield _make_event("tool_calls", event_stream_message)
-            elif message_chunk.tool_call_chunks:
-                # AI Message - Tool Call Chunks
-                event_stream_message["tool_call_chunks"] = (
-                    message_chunk.tool_call_chunks
-                )
-                yield _make_event("tool_call_chunks", event_stream_message)
+
+        elif op == "stream":
+            message_chunk = cast(AIMessageChunk, data_for_op)
+            event_stream_message: dict[str, any] = {
+                "thread_id": thread_id,
+                "agent": agent_name_for_event,
+                "id": message_chunk.id,
+                "role": "assistant",
+                "content": message_chunk.content,
+            }
+            if message_chunk.response_metadata.get("finish_reason"):
+                event_stream_message["finish_reason"] = message_chunk.response_metadata.get("finish_reason")
+            
+            if isinstance(message_chunk, ToolMessage):
+                event_stream_message["tool_call_id"] = message_chunk.tool_call_id
+                yield _make_event("tool_call_result", event_stream_message)
             else:
-                # AI Message - Raw message tokens
-                yield _make_event("message_chunk", event_stream_message)
+                if message_chunk.tool_calls:
+                    event_stream_message["tool_calls"] = message_chunk.tool_calls
+                    event_stream_message["tool_call_chunks"] = message_chunk.tool_call_chunks
+                    yield _make_event("tool_calls", event_stream_message)
+                elif message_chunk.tool_call_chunks:
+                    event_stream_message["tool_call_chunks"] = message_chunk.tool_call_chunks
+                    yield _make_event("tool_call_chunks", event_stream_message)
+                else:
+                    yield _make_event("message_chunk", event_stream_message)
+            continue
+
+        if isinstance(data_for_op, dict) and "__interrupt__" in data_for_op:
+            interrupt_info_dict = data_for_op["__interrupt__"]
+            logger.warning(f"Old __interrupt__ event triggered with data: {data_for_op}. Op was '{op}'. This might be unexpected.")
+            
+            interrupt_node_id = "unknown_interrupt_node"
+            interrupt_content = "An interruption has occurred."
+            options = []
+
+            interrupt_items = []
+            if isinstance(interrupt_info_dict, list) and len(interrupt_info_dict) > 0:
+                interrupt_items = interrupt_info_dict
+            elif hasattr(interrupt_info_dict, 'ns'):
+                interrupt_items = [interrupt_info_dict]
+            
+            if interrupt_items:
+                first_interrupt_item = interrupt_items[0]
+                logger.info(f"Interrupt item: {first_interrupt_item}")
+                if hasattr(first_interrupt_item, 'ns') and first_interrupt_item.ns and len(first_interrupt_item.ns) > 0:
+                    interrupt_node_id = first_interrupt_item.ns[0]
+                    logger.info(f"Found interrupt node ID: {interrupt_node_id}")
+                if hasattr(first_interrupt_item, 'value'):
+                    interrupt_content = first_interrupt_item.value
+                    logger.info(f"Found interrupt content: {interrupt_content[:100]}...")
+                
+                if interrupt_node_id == "human_prd_review":
+                    options = [
+                        {"text": "Approve PRD", "value": "approve"},
+                        {"text": "Revise PRD (add feedback)", "value": "revise_prd"},
+                        {"text": "Needs more research", "value": "research_needed"},
+                    ]
+                elif interrupt_node_id == "human_feedback_plan":
+                     options = [
+                        {"text": "Accept Plan", "value": "accept"},
+                        {"text": "Revise Plan (add feedback)", "value": "revise_plan"},
+                    ]
+                else:
+                    options = [{"text": "Continue", "value": "continue"}, {"text": "Abort", "value": "abort"}]
+            else:
+                logger.warning("'__interrupt__' key found but its value is empty or not as expected.")
+
+            message_id = f"msg-{interrupt_node_id}-{random.randint(1000, 9999)}"
+            yield _make_event(
+                "message_chunk",
+                {
+                    "thread_id": thread_id, "agent": agent_name_for_event, "id": message_id,
+                    "role": "assistant", "content": interrupt_content, "finish_reason": "stop",
+                },
+            )
+            time.sleep(0.5)
+            interrupt_event_id = f"{interrupt_node_id}-{random.randint(1000, 9999)}"
+            yield _make_event(
+                "interrupt",
+                {
+                    "thread_id": thread_id, "id": interrupt_event_id, "role": "assistant",
+                    "content": "Please provide your feedback:", "finish_reason": "interrupt", "options": options,
+                },
+            )
+            continue
+
+        logger.debug(f"Graph event not specifically handled for SSE: op='{op}', data_type='{type(data_for_op)}'")
 
 
 def _make_event(event_type: str, data: dict[str, any]):
