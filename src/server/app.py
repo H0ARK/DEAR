@@ -98,9 +98,17 @@ async def _astream_workflow_generator(
     # Add repository information if provided
     if repository:
         input_["repository"] = repository.model_dump()
+        logger.info(f"Using repository from UI: {repository.fullName}")
 
-    # Add create_workspace flag
+    # Add create_workspace flag - default to False to prioritize repository picker
+    # Only enable workspace creation if explicitly requested AND no repository is selected
+    create_workspace = create_workspace and not repository
     input_["create_workspace"] = create_workspace
+
+    if create_workspace:
+        logger.info("Workspace creation is enabled")
+    else:
+        logger.info("Workspace creation is disabled")
     if not auto_accepted_plan and interrupt_feedback:
         resume_msg = f"[{interrupt_feedback}]"
         # add the last message to the resume message
@@ -120,7 +128,8 @@ async def _astream_workflow_generator(
                 "max_step_num": max_step_num,
                 "mcp_settings": mcp_settings,
                 "create_workspace": create_workspace,
-                "repo_path": repository.url.replace("https://github.com/", "") if repository else None,
+                "repo_path": repository.fullName if repository else None,
+                "github_token": os.environ.get("GITHUB_TOKEN", ""),
             }
         },
         stream_mode=["messages", "updates"],

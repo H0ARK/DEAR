@@ -62,11 +62,32 @@ def context_gathering_node(
         logger.error(f"Error analyzing repository: {e}")
         context_info["repo_error"] = str(e)
 
+    # Check if a repository was selected in the UI
+    if state.get("repository"):
+        try:
+            repo_info = state["repository"]
+            logger.info(f"Using repository selected in UI: {repo_info['fullName']}")
+
+            # Update context info with the selected repository
+            context_info["selected_repository"] = {
+                "owner": repo_info["owner"],
+                "name": repo_info["name"],
+                "full_name": repo_info["fullName"],
+                "url": repo_info["url"]
+            }
+
+            # If we're using the repository picker, we don't create a workspace
+            # This preserves the original repository picker functionality
+            logger.info(f"Repository picker is active, using repository: {repo_info['fullName']}")
+
+        except Exception as e:
+            logger.error(f"Error processing selected repository: {e}")
+
     # Check if we should create a workspace for this session
-    # For now, we'll make this optional to maintain compatibility with the GitHub repository picker
+    # This is optional and disabled by default to maintain compatibility with the GitHub repository picker
     create_workspace = configurable.create_workspace if hasattr(configurable, 'create_workspace') else False
 
-    if create_workspace:
+    if create_workspace and not state.get("repository"):
         try:
             from src.tools.workspace_manager import WorkspaceManager
 
@@ -98,7 +119,11 @@ def context_gathering_node(
             logger.error(f"Error creating workspace: {e}")
             context_info["workspace_error"] = str(e)
     else:
-        logger.info("Workspace creation is disabled, using current branch")
+        if create_workspace and state.get("repository"):
+            logger.info("Repository picker is active, workspace creation is disabled")
+        else:
+            logger.info("Workspace creation is disabled, using current branch")
+
         # Add current branch info to context
         if context_info.get("git_info") and context_info["git_info"].get("current_branch"):
             context_info["current_branch"] = context_info["git_info"]["current_branch"]

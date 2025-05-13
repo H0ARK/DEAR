@@ -4,7 +4,7 @@
 import { LoadingOutlined } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import { Download, Headphones } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { LoadingAnimation } from "~/components/deer-flow/loading-animation";
 import { Markdown } from "~/components/deer-flow/markdown";
@@ -135,7 +135,7 @@ function MessageListItem({
       message.agent === "podcast" ||
       startOfResearch
     ) {
-      let content: React.ReactNode;
+      let content: ReactNode;
       if (message.agent === "planner") {
         content = (
           <div className="w-full px-4">
@@ -174,7 +174,7 @@ function MessageListItem({
           >
             <MessageBubble message={message}>
               <div className="flex w-full flex-col">
-                <Markdown>{message?.content}</Markdown>
+                <Markdown animated>{message?.content}</Markdown>
               </div>
             </MessageBubble>
           </div>
@@ -209,7 +209,7 @@ function MessageBubble({
 }: {
   className?: string;
   message: Message;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div
@@ -328,7 +328,7 @@ function PlanCard({
     <Card className={cn("w-full", className)}>
       <CardHeader>
         <CardTitle>
-          <Markdown animate>
+          <Markdown animated>
             {`### ${
               plan.title !== undefined && plan.title !== ""
                 ? plan.title

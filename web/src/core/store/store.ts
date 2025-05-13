@@ -105,6 +105,7 @@ export async function sendMessage(
       max_plan_iterations: settings.maxPlanIterations,
       max_step_num: settings.maxStepNum,
       mcp_settings: settings.mcpSettings,
+      create_workspace: settings.createWorkspace,
     },
     options,
   );

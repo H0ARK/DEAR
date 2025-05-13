@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS: SettingsState = {
     enableBackgroundInvestigation: false,
     maxPlanIterations: 1,
     maxStepNum: 3,
+    createWorkspace: false,
   },
   mcp: {
     servers: [],
@@ -25,6 +26,7 @@ export type SettingsState = {
     enableBackgroundInvestigation: boolean;
     maxPlanIterations: number;
     maxStepNum: number;
+    createWorkspace: boolean;
   };
   mcp: {
     servers: MCPServerMetadata[];
@@ -120,6 +122,7 @@ export const getChatStreamSettings = () => {
   return {
     ...general,
     mcpSettings,
+    createWorkspace: general.createWorkspace,
   };
 };
 

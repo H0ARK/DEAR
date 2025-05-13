@@ -11,6 +11,7 @@ import { Suspense } from "react";
 import { Button } from "~/components/ui/button";
 
 import { Logo } from "../../components/deer-flow/logo";
+import { RepositorySelector } from "../../components/deer-flow/repository-selector";
 import { ThemeToggle } from "../../components/deer-flow/theme-toggle";
 import { Tooltip } from "../../components/deer-flow/tooltip";
 import { SettingsDialog } from "../settings/dialogs/settings-dialog";

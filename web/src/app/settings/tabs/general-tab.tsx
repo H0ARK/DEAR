@@ -32,6 +32,7 @@ const generalFormSchema = z.object({
   maxStepNum: z.number().min(1, {
     message: "Max step number must be at least 1.",
   }),
+  createWorkspace: z.boolean(),
 });
 
 export const GeneralTab: Tab = ({

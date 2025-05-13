@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { Check, Copy } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import ReactMarkdown, {
   type Options as ReactMarkdownOptions,
 } from "react-markdown";
@@ -29,7 +29,7 @@ export function Markdown({
 }: ReactMarkdownOptions & {
   className?: string;
   enableCopy?: boolean;
-  style?: React.CSSProperties;
+  style?: ReactNode;
   animated?: boolean;
 }) {
   const rehypePlugins = useMemo(() => {
@@ -44,7 +44,7 @@ export function Markdown({
         className,
         "prose dark:prose-invert prose-p:my-0 prose-img:mt-0 flex flex-col gap-4",
       )}
-      style={style}
+      style={style as React.CSSProperties}
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}

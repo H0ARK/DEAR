@@ -437,8 +437,17 @@ async def coder_node(
     """Coder node that do code analysis."""
     logger.info("Coder node is coding.")
 
+    # Check if we have a selected repository from the UI
+    if state.get("context_info") and state["context_info"].get("selected_repository"):
+        try:
+            repo = state["context_info"]["selected_repository"]
+            logger.info(f"Coder using repository from UI: {repo['full_name']}")
+            # The repository picker handles the repository selection, so we don't need to do anything here
+        except Exception as repo_error:
+            logger.error(f"Error using selected repository: {repo_error}", exc_info=True)
+
     # Check if we have workspace information and switch to the workspace branch
-    if state.get("context_info") and state["context_info"].get("workspace"):
+    elif state.get("context_info") and state["context_info"].get("workspace"):
         try:
             import os
             workspace = state["context_info"]["workspace"]
@@ -455,8 +464,9 @@ async def coder_node(
             logger.info(f"Successfully switched to workspace branch {workspace['branch_name']}")
         except Exception as ws_error:
             logger.error(f"Error switching to workspace branch: {ws_error}", exc_info=True)
+
+    # If we're not using workspaces, log the current branch
     elif state.get("context_info") and state["context_info"].get("current_branch"):
-        # If we're not using workspaces, log the current branch
         current_branch = state["context_info"]["current_branch"]
         logger.info(f"Using current branch: {current_branch}")
 

@@ -29,6 +29,7 @@ export async function* chatStream(
         }
       >;
     };
+    create_workspace: boolean;
   },
   options: { abortSignal?: AbortSignal } = {},
 ) {
