@@ -8,7 +8,6 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { LucideIcon } from "~/components/deer-flow/icons/lucide-icon";
 import { Button } from "~/components/ui/button";
 
 import { Logo } from "../../components/deer-flow/logo";
@@ -43,7 +42,7 @@ export default function HomePage() {
                 href="https://github.com/bytedance/deer-flow"
                 target="_blank"
               >
-                <LucideIcon name="github" />
+                <GithubOutlined />
               </Link>
             </Button>
           </Tooltip>

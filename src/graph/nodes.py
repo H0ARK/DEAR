@@ -5,6 +5,7 @@ import json
 import logging
 from typing import Annotated, Literal
 import os
+import random
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -77,13 +78,11 @@ def background_investigation_node(state: State) -> Command[Literal["context_gath
 def coding_planner_node(
     state: State, config: RunnableConfig
 ) -> Command[Literal["human_feedback_plan", "__end__"]]:
-    """Planner node that generates a code implementation plan."""
-    logger.info("Coding Planner generating code plan...")
-    # Increment plan iterations (for loop prevention)
+    """Planner node that generates a detailed task breakdown from the PRD."""
+    logger.info("Coding Planner generating detailed task plan...")
     plan_iterations = state.get("plan_iterations", 0) + 1
     configurable = Configuration.from_runnable_config(config)
 
-    # Prevent potential infinite loops
     if plan_iterations > configurable.max_plan_iterations:
         logger.warning("Max plan iterations reached. Ending workflow.")
         return Command(
@@ -91,105 +90,113 @@ def coding_planner_node(
             goto="__end__"
         )
 
-    # Use the new coding_planner prompt
-    messages = apply_prompt_template("coding_planner", state, configurable)
+    # Inputs for the planner
+    prd_document = state.get("prd_document")
+    if not prd_document:
+        logger.error("PRD document not found in state. Cannot generate plan.")
+        return Command(
+            update={"messages": state["messages"] + [AIMessage(content="Error: PRD document is missing. Cannot generate a plan.", name="coding_planner")]},
+            goto="__end__" # Or route to coding_coordinator to generate PRD
+        )
+    
+    existing_project_summary = state.get("existing_project_summary")
+    failed_task_details = state.get("failed_task_details") # For re-planning
 
-    # Add background investigation results if available
-    if state.get("enable_background_investigation") and state.get("background_investigation_results") and plan_iterations == 1: # Only add on first iteration
-        messages += [
-            {
-                "role": "user",
-                "content": (
-                    "background investigation results of user query:\n"
-                    + state["background_investigation_results"]
-                    + "\n"
-                ),
-            }
-        ]
+    # Prepare prompt_state_input for apply_prompt_template
+    # The "coding_planner" template should be updated to use these fields.
+    prompt_state_input = state.copy() # Start with a copy of the current state
+    prompt_state_input["prd_document"] = prd_document
+    prompt_state_input["existing_project_summary"] = existing_project_summary
+    prompt_state_input["failed_task_details"] = failed_task_details
+    # Add any other relevant fields from state that the prompt might need
+    # messages = apply_prompt_template("coding_planner", prompt_state_input, configurable)
+    # For now, let's construct messages more directly to highlight new inputs:
+    
+    instruction_message = "Generate a detailed task plan based on the provided Product Requirements Document (PRD)."
+    if existing_project_summary:
+        instruction_message += " Consider the existing project context." 
+        # Potentially add existing_project_summary content to messages if not too large
 
-    # Use the LLM to generate a plan
+    if failed_task_details:
+        instruction_message += f" You are re-planning due to a failed task: {failed_task_details.get('description', 'N/A')}. Please provide a revised plan for this task or related tasks."
+        # Add failed_task_details to messages
+
+    # Simplified message construction for now. Real implementation uses apply_prompt_template with an updated template.
+    messages = [
+        HumanMessage(content=instruction_message),
+        HumanMessage(content=f"PRD:\n{prd_document}"),
+    ]
+    if existing_project_summary:
+        messages.append(HumanMessage(content=f"Existing Project Context:\n{json.dumps(existing_project_summary, indent=2)}"))
+    if failed_task_details:
+        messages.append(HumanMessage(content=f"Details of Failed Task for Re-planning:\n{json.dumps(failed_task_details, indent=2)}"))
+    
+    # Append original message history if needed, ensure `apply_prompt_template` handles this correctly.
+    # messages = state.get("messages", []) + messages 
+
+    logger.info(f"Coding planner inputs: PRD (len {len(prd_document)}), Existing Summary (present: {bool(existing_project_summary)}), Failed Task (present: {bool(failed_task_details)})")
+
     llm = get_llm_by_type(AGENT_LLM_MAP["coding_planner"])
-    response = llm.invoke(messages)
+    response = llm.invoke(messages) # Pass the constructed messages
     full_response = response.content
 
-    logger.debug(f"Coding Planner state messages: {state['messages']}")
-    logger.info(f"Coding Planner response: {full_response}")
+    logger.debug(f"Coding Planner raw LLM response: {full_response}")
 
-    # Try to parse the response as JSON
     try:
-        plan_json = json.loads(repair_json_output(full_response))
-        github_feature_branch = plan_json.get("feature_branch")
-        github_task_branches = {}
+        # Expecting LLM to output a JSON list of task dictionaries
+        # Example Task Dict: {id, description, dependencies: List[id], branch_name, status_in_plan, execute_alone}
+        parsed_tasks = json.loads(repair_json_output(full_response))
+        if not isinstance(parsed_tasks, list):
+            raise ValueError("LLM response for tasks is not a list.")
+        
+        tasks_definition = []
+        for i, task_data in enumerate(parsed_tasks):
+            if not isinstance(task_data, dict):
+                logger.warning(f"Task item {i} is not a dictionary: {task_data}")
+                # Optionally skip or add a default error task
+                continue
+            
+            # Basic validation/defaulting (can be more robust with Pydantic model for TaskDefinitionItem)
+            task_id = task_data.get("id", f"task_{i+1}")
+            description = task_data.get("description", "No description provided.")
+            dependencies = task_data.get("dependencies", [])
+            branch_name = task_data.get("branch_name", f"task/{task_id}")
+            status_in_plan = task_data.get("status_in_plan", "todo")
+            execute_alone = task_data.get("execute_alone", False)
 
-        adapted_plan = {
-            "locale": plan_json.get("locale", state.get("locale", "en-US")),\
-            "has_enough_context": True,\
-            "thought": plan_json.get("thought", "Code implementation plan"),
-            "title": plan_json.get("title", "Coding Task"),
-            "steps": []
-        }
+            tasks_definition.append({
+                "id": task_id,
+                "description": description,
+                "dependencies": dependencies,
+                "branch_name": branch_name,
+                "status_in_plan": status_in_plan,
+                "execute_alone": execute_alone,
+                # Add other fields from your Task Dict spec if needed
+            })
+        
+        if not tasks_definition:
+             logger.warning("LLM parsed response resulted in an empty task list.")
+             # Handle empty task list - maybe raise error or default to __end__?
 
-        if "steps" in plan_json:
-            steps = plan_json["steps"]
-            if isinstance(steps, list):
-                for i, step in enumerate(steps):
-                    if not isinstance(step, dict):
-                        logger.warning(f"Step {i+1} is not a dictionary: {step}")
-                        continue
-                    task_branch = None
-                    if "task_branch" in step:
-                        task_branch = step.get("task_branch")
-                        github_task_branches[i+1] = task_branch
-                    step_title = f"Step {i+1}"
-                    step_description = ""
-                    if "title" in step and isinstance(step["title"], str):
-                        step_title = step["title"]
-                    if "description" in step and isinstance(step["description"], str):
-                        step_description = step["description"]
-                    adapted_plan["steps"].append({
-                        "need_web_search": False,
-                        "title": step_title,
-                        "description": step_description,
-                        "step_type": StepType.PROCESSING
-                    })
-            else:
-                logger.warning(f"Steps is not a list: {steps}")
-                adapted_plan["steps"].append({
-                    "need_web_search": False,
-                    "title": "Default Step",
-                    "description": "No valid steps were found in the plan.",
-                    "step_type": StepType.PROCESSING
-                })
+        logger.info(f"Successfully parsed {len(tasks_definition)} tasks.")
 
-        validated_plan = Plan.model_validate(adapted_plan)
-        logger.info(f"Successfully parsed and validated coding plan: {validated_plan.title}")
-
-        # Update state with the plan and GitHub info, then go to feedback
         updated_state = {
             "messages": state["messages"] + [AIMessage(content=full_response, name="coding_planner")],
-            "current_plan": validated_plan,
-            "current_workflow": "coding",
-            "feature_branch_name": github_feature_branch,
-            "github_task_branches": github_task_branches,
-            "github_action": "create_feature_branch" if github_feature_branch else None,
-            "feature_branch_description": plan_json.get("thought", ""),
-            "plan_iterations": plan_iterations # Store iteration count
+            "tasks_definition": tasks_definition, # New state field
+            "current_plan": None, # Deprecate or redefine current_plan if tasks_definition is the source of truth
+            "plan_iterations": plan_iterations,
+            "failed_task_details": None # Clear after re-planning
         }
-
-        # Route to human feedback for the plan
         return Command(update=updated_state, goto="human_feedback_plan")
 
     except Exception as e:
-        logger.error(f"Error parsing coding plan: {e}")
-        error_message = f"I encountered an error trying to structure the coding plan. Please check the format or try rephrasing your request. Error: {e}"
+        logger.error(f"Error parsing detailed task plan from LLM: {e}")
+        error_message = f"I encountered an error trying to structure the detailed task plan. Error: {e}. LLM response was: {full_response[:500]}..."
         return Command(
             update={
-                "messages": state["messages"] + [
-                    AIMessage(content=error_message, name="coding_planner"),
-                    # Optionally include the raw response for debugging?
-                    # AIMessage(content=f"Raw LLM Response:\n```\n{full_response}\n```", name="coding_planner")
-                ],
-                 "plan_iterations": plan_iterations # Store iteration count even on error
+                "messages": state["messages"] + [AIMessage(content=error_message, name="coding_planner")],
+                "plan_iterations": plan_iterations,
+                "failed_task_details": None # Clear even on error if it was a re-plan attempt
             },
             goto="__end__"
         )
@@ -197,30 +204,19 @@ def coding_planner_node(
 
 def human_feedback_plan_node(
     state: State,
-) -> Command[Literal["coding_planner", "github_planning", "coder"]]:
+) -> Command[Literal["coding_planner", "task_orchestrator"]]:
     """Node to wait for user feedback on the generated coding plan."""
     logger.info("Waiting for user feedback on the coding plan...")
 
-    # Interrupt the graph to wait for feedback
-    # The feedback string is expected to be injected into the state by the caller
-    # (e.g., via the interruptFeedback field in sendMessage)
     feedback = interrupt("Please review the generated coding plan. Respond with 'accept' or provide feedback for revision.")
-
-    # The interrupt() call pauses execution. When resumed, 
-    # the user's feedback should be the last message or in a specific state field.
-    # For now, let's assume the feedback comes via the interrupt mechanism directly.
-    # Note: Actual feedback injection needs to be handled by the environment running the graph.
 
     feedback_str = str(feedback).strip().upper()
     logger.info(f"Received feedback on plan: {feedback_str}")
 
     if feedback_str.startswith("ACCEPT") or feedback_str.startswith("YES") :
-        logger.info("Plan accepted by user. Proceeding...")
-        # Check if a feature branch was planned
-        feature_branch_name = state.get("feature_branch_name")
-        next_node = "github_planning" if feature_branch_name else "coder"
-        # No state update needed here, just route
-        return Command(goto=next_node)
+        logger.info("Plan accepted by user. Proceeding to Task Orchestrator...")
+        # On accept, always go to task_orchestrator based on current plan
+        return Command(goto="task_orchestrator")
 
     elif feedback_str.startswith("REVISE") or feedback_str.startswith("EDIT") or feedback_str.startswith("NO"):
         logger.info("Plan revision requested. Routing back to coding_planner.")
@@ -337,7 +333,7 @@ def reporter_node(state: State):
 
 def research_team_node(
     state: State,
-) -> Command[Literal["researcher", "coder", "coding_planner"]]:
+) -> Command[Literal["researcher", "task_orchestrator", "coding_coordinator"]]:
     """Research team node that collaborates on tasks."""
     logger.info("Research team is collaborating on tasks.")
     current_plan = state.get("current_plan")
@@ -351,7 +347,7 @@ def research_team_node(
     if step.step_type and step.step_type == StepType.RESEARCH:
         return Command(goto="researcher")
     if step.step_type and step.step_type == StepType.PROCESSING:
-        return Command(goto="coder")
+        return Command(goto="task_orchestrator")
     return Command(goto="coding_planner")
 
 
@@ -455,7 +451,7 @@ async def _setup_and_execute_agent_step(
     agent_type: str,
     default_agent,
     default_tools: list,
-) -> Command[Literal["research_team", "__end__"]]:
+) -> Command[Literal["research_team"]]:
     """Helper function to set up an agent with appropriate tools and execute a step.
 
     This function handles the common logic for both researcher_node and coder_node:
@@ -511,7 +507,7 @@ async def _setup_and_execute_agent_step(
 
 async def researcher_node(
     state: State, config: RunnableConfig
-) -> Command[Literal["research_team", "__end__"]]:
+) -> Command[Literal["research_team"]]:
     """Researcher node that do research"""
     logger.info("Researcher node is researching.")
     return await _setup_and_execute_agent_step(
@@ -527,117 +523,151 @@ async def coder_node(
     state: State, config: RunnableConfig
 ) -> Command[Literal["research_team", "__end__"]]:
     """Coder node that do code analysis."""
-    logger.info("Coder node is coding.")
-
-    # Check if we have workspace information and switch to the workspace branch
-    if state.get("context_info") and state["context_info"].get("workspace"):
-        try:
-            import os
-            workspace = state["context_info"]["workspace"]
-            logger.info(f"Ensuring coder is on workspace branch {workspace['branch_name']}")
-
-            # Import the workspace manager
-            from src.tools.workspace_manager import WorkspaceManager
-
-            # Create the workspace manager
-            workspace_manager = WorkspaceManager(os.getcwd())
-
-            # Switch to the workspace branch
-            workspace_manager.switch_to_workspace(workspace["id"])
-            logger.info(f"Successfully switched to workspace branch {workspace['branch_name']}")
-        except Exception as ws_error:
-            logger.error(f"Error switching to workspace branch: {ws_error}", exc_info=True)
-    elif state.get("context_info") and state["context_info"].get("current_branch"):
-        # If we're not using workspaces, log the current branch
-        current_branch = state["context_info"]["current_branch"]
-        logger.info(f"Using current branch: {current_branch}")
-
-    return await _setup_and_execute_agent_step(
-        state,
-        config,
-        "coder",
-        coder_agent,
-        [python_repl_tool],
-    )
+    logger.warning("coder_node is entirely commented out and should not be called.")
+    # Original content commented out to prevent any potential interference:
+    # logger.info("Coder node is coding.")
+    #
+    # # Check if we have workspace information and switch to the workspace branch
+    # if state.get("context_info") and state["context_info"].get("workspace"):
+    #     try:
+    #         import os
+    #         workspace = state["context_info"]["workspace"]
+    #         logger.info(f"Ensuring coder is on workspace branch {workspace['branch_name']}")
+    #
+    #         # Import the workspace manager
+    #         from src.tools.workspace_manager import WorkspaceManager
+    #
+    #         # Create the workspace manager
+    #         workspace_manager = WorkspaceManager(os.getcwd())
+    #
+    #         # Switch to the workspace branch
+    #         workspace_manager.switch_to_workspace(workspace["id"])
+    #         logger.info(f"Successfully switched to workspace branch {workspace['branch_name']}")
+    #     except Exception as ws_error:
+    #         logger.error(f"Error switching to workspace branch: {ws_error}", exc_info=True)
+    # elif state.get("context_info") and state["context_info"].get("current_branch"):
+    #     # If we're not using workspaces, log the current branch
+    #     current_branch = state["context_info"]["current_branch"]
+    #     logger.info(f"Using current branch: {current_branch}")
+    #
+    # return await _setup_and_execute_agent_step(
+    #     state,
+    #     config,
+    #     "coder",
+    #     coder_agent,
+    #     [python_repl_tool],
+    # )
+    # Return a dummy command to satisfy type hints if absolutely necessary,
+    # though this node should not be reached.
+    return Command(goto="__end__")
 
 
 # === Coding Flow Nodes ===
 
 def coding_coordinator_node(
     state: State,
-) -> Command[Literal["prepare_codegen_task", "coding_planner", "coder", "coding_coordinator", "__end__"]]:
-    """Coordinator node for the coding workflow. Determines strategy based on user request and initial context."""
-    logger.info("Coding Coordinator talking. Determining strategy...")
+) -> Command[Literal["human_prd_review", "context_gatherer", "coding_planner", "__end__"]]:
+    """
+    Manages the PRD development lifecycle.
+    Initializes or updates the PRD based on project context, user feedback, and research.
+    Determines the next step in the PRD process (review, research, or move to planning).
+    """
+    logger.info("Coding Coordinator: Managing PRD development...")
 
-    # Ensure initial context has been gathered if this workflow expects it.
-    # This is a fallback if graph isn't started at initial_context_node for some reason.
-    if not state.get("initial_repo_check_done"):
-        logger.warning("Initial repo check not done! Coordinator might lack full context.")
-        # Ideally, graph should always start at initial_context_node for this flow.
+    # Initialize or retrieve current PRD
+    prd_document = state.get("prd_document", "")
+    prd_review_feedback = state.get("prd_review_feedback")
+    research_results = state.get("research_results")
+    existing_project_summary = state.get("existing_project_summary")
+    
+    # Prepare state for the prompt template
+    # The prompt template "coding_coordinator_prd" should be designed to handle these fields.
+    prompt_state_input = {
+        "messages": state.get("messages", []), # Original messages
+        "prd_document": prd_document,
+        "prd_review_feedback": prd_review_feedback,
+        "research_results": research_results,
+        "existing_project_summary": existing_project_summary,
+        "initial_context_summary": state.get("initial_context_summary", "") # Fallback or complementary
+    }
 
-    # The prompt for "coding_coordinator" should be designed to use
-    # state["initial_context_summary"], state["repo_is_empty"], etc.
-    messages = apply_prompt_template("coding_coordinator", state) # Assuming template handles new state fields
-    response = get_llm_by_type(AGENT_LLM_MAP["coordinator"]).invoke(messages)
-    logger.debug(f"Coding Coordinator state messages: {state['messages']}")
+    # Handle direct approval from human_prd_review_node
+    if prd_review_feedback and "approve".lower() in prd_review_feedback.lower():
+        logger.info("PRD approved by user via feedback.")
+        updated_state = {
+            "prd_approved": True,
+            "prd_next_step": "coding_planner",
+            "prd_review_feedback": None, # Clear feedback
+            "research_results": None, # Clear research results
+            "messages": state["messages"] + [AIMessage(content="[System Note: PRD has been approved by the user. Proceeding to planning.]", name="coding_coordinator")]
+        }
+        return Command(update=updated_state, goto="coding_planner")
+
+    # LLM call to update PRD and decide next step
+    # Assuming a new prompt template "coding_coordinator_prd"
+    # This template should guide the LLM to:
+    # 1. Initialize PRD if prd_document is empty, using user request and existing_project_summary.
+    # 2. Incorporate prd_review_feedback if present.
+    # 3. Incorporate research_results if present.
+    # 4. Output the updated prd_document.
+    # 5. Output a structured decision for prd_next_step (e.g., "NEXT_STEP: human_prd_review", "NEXT_STEP: context_gatherer", "NEXT_STEP: prd_ready_for_final_review")
+    
+    # For now, we'll simulate the LLM's structured output for next_step parsing.
+    # In a real scenario, this comes from parsing the LLM response.
+    
+    messages_for_llm = apply_prompt_template("coding_coordinator_prd", prompt_state_input)
+    
+    logger.debug(f"Messages for PRD coordinator LLM: {messages_for_llm}")
+    response = get_llm_by_type(AGENT_LLM_MAP["coordinator"]).invoke(messages_for_llm)
     response_content = response.content
-    logger.info(f"Coding Coordinator LLM response: {response_content}")
+    logger.info(f"Coding Coordinator (PRD) LLM raw response: {response_content}")
 
-    goto = "__end__"  # Default to ending
-    locale = state.get("locale", "en-US")
-    strategy = "CLARIFY" # Default strategy if not found
-
-    if response_content and response_content.strip():
-        # Parse strategy from response
-        if "STRATEGY: CODEGEN" in response_content.upper():
-            strategy = "CODEGEN"
-            goto = "prepare_codegen_task"
-            logger.info("Strategy: CODEGEN. Routing to prepare_codegen_task.")
-        elif "STRATEGY: PLAN" in response_content.upper():
-            strategy = "PLAN"
-            goto = "context_gatherer"  # Route to context gatherer first
-            logger.info("Strategy: PLAN. Routing to context_gatherer.")
-        elif "STRATEGY: DIRECT" in response_content.upper():
-            strategy = "DIRECT"
-            goto = "coder"
-            logger.info("Strategy: DIRECT. Routing to coder.")
-        elif "STRATEGY: CLARIFY" in response_content.upper():
-            strategy = "CLARIFY"
-            # Loop back to self (coding_coordinator) by not changing goto from default if it means asking user
-            # Or, if LLM asks question, it will be added to messages, and next run it re-evaluates.
-            # For now, explicit loop back if LLM wants to clarify to ensure it retries with new message.
-            goto = "coding_coordinator" # This will re-run the coordinator with the new AI message
-            logger.info("Strategy: CLARIFY. LLM will ask clarifying questions. Looping back to coding_coordinator.")
-        else:
-            # If the response contains a plan or mentions planning, route to context_gatherer
-            if "PLAN" in response_content.upper() or "HERE'S THE PLAN" in response_content.upper():
-                strategy = "PLAN"
-                goto = "context_gatherer"  # Route to context gatherer first
-                logger.info("Strategy detected from content: PLAN. Routing to context_gatherer.")
-            else:
-                # If no clear strategy, but there is content, assume clarification or simple response.
-                # Let it go to __end__ if no strategy, or loop to ask for clarification if content seems like a question.
-                logger.warning(f"No explicit STRATEGY found in coordinator response. Content: {response_content[:100]}... Defaulting to context_gatherer.")
-                # For now, if no strategy, but content exists, route to context_gatherer
-                goto = "context_gatherer"  # Route to context gatherer by default
-
+    # --- Parse LLM Response ---
+    # This part needs robust parsing for the PRD document and the next_step directive.
+    # Example: LLM might output JSON, or use specific keywords.
+    # Let's assume LLM outputs:
+    # { "updated_prd": "...", "next_action": "human_prd_review" }
+    # Or it might be plain text with markers, e.g.:
+    # PRD_DOCUMENT_START
+    # ... new prd ...
+    # PRD_DOCUMENT_END
+    # NEXT_ACTION: human_prd_review
+    
+    # Simulated parsing:
+    parsed_prd_document = response_content # Simplistic: assume LLM just returns the new PRD
+    parsed_next_step = "human_prd_review" # Default if not parsed
+    
+    if "NEXT_ACTION: human_prd_review".lower() in response_content.lower():
+        parsed_next_step = "human_prd_review"
+    elif "NEXT_ACTION: context_gatherer".lower() in response_content.lower():
+        parsed_next_step = "context_gatherer"
+    elif "NEXT_ACTION: prd_complete".lower() in response_content.lower(): # LLM thinks PRD is good
+        # This doesn't mean auto-approved. It still goes to human_prd_review,
+        # but the prompt to human might be "LLM considers this PRD complete. Please review for approval."
+        parsed_next_step = "human_prd_review" 
+        logger.info("LLM suggests PRD is complete, routing for final human review/approval.")
     else:
-        logger.warning(
-            "Coding Coordinator response was empty. Terminating workflow execution."
-        )
-        goto = "__end__"
+        # Fallback if no clear directive, assume it needs more review
+        logger.warning(f"No clear NEXT_ACTION in LLM response for PRD. Defaulting to human_prd_review. Response: {response_content[:200]}")
+        parsed_next_step = "human_prd_review"
 
-    return Command(
-        update={
-            "locale": locale,
-            "messages": state["messages"] + [response] # Add LLM response to messages
-        },
-        goto=goto,
-    )
+    # Update state
+    updated_state_fields = {
+        "prd_document": parsed_prd_document,
+        "prd_next_step": parsed_next_step,
+        "prd_approved": False, # Approval only happens after human_prd_review node signals it
+        "prd_review_feedback": None, # Clear feedback after processing
+        "research_results": None, # Clear research results after processing
+        "messages": state["messages"] + [response] # Add LLM response
+    }
+    
+    logger.info(f"Coding Coordinator updated PRD. Next step for PRD: {parsed_next_step}")
+
+    return Command(update=updated_state_fields, goto=parsed_next_step)
 
 def coding_dispatcher_node(
     state: State,
-) -> Command[Literal["codegen_executor", "coder", "__end__"]]: # Add potential destinations
+) -> Command[Literal["codegen_executor", "task_orchestrator", "__end__"]]: # Changed coder to task_orchestrator
     """Dispatcher node to route coding tasks."""
     logger.info("Coding Dispatcher deciding next step...")
     # TODO: Implement logic to analyze state (user request, coordinator response)
@@ -802,33 +832,98 @@ def poll_codegen_status_node(state: State, config: RunnableConfig) -> State: # A
 
 
 # Placeholder node functions (to be implemented)
-def prepare_codegen_task_node(state: State) -> State:
-    logger.info("Preparing Codegen task description...")
-    updated_state = state.copy()
-    # Attempt to get description from various sources if not already set
-    if not updated_state.get("codegen_task_description"):
-        # Priority: last message content from coordinator, then last user message
-        # This logic might need to be more robust based on actual flow
-        if updated_state["messages"][-1].type == "ai": # Assuming last is AI (coordinator)
-            description_source = updated_state["messages"][-1].content
-        elif len(updated_state["messages"]) > 1 and updated_state["messages"][-2].type == "ai":
-            description_source = updated_state["messages"][-2].content # if last is human feedback
-        else:
-            description_source = "No suitable task description found in recent messages."
-            logger.warning(description_source)
+def task_orchestrator_node(state: State) -> State:
+    logger.info("Task Orchestrator node executing...")
+    
+    tasks_live = state.get("tasks_live", [])
+    if not isinstance(tasks_live, list):
+        logger.error(f"tasks_live is not a list or not found in state: {tasks_live}")
+        tasks_live = [] # Default to empty list to prevent further errors
 
-        # Basic refinement: just use the content. Could be an LLM call here for actual refinement.
-        updated_state["codegen_task_description"] = description_source
-        logger.info(f"Set codegen_task_description from: {description_source}")
+    # --- Process outcome of the previously dispatched task ---
+    processed_id = state.get("processed_task_id")
+    processed_outcome = state.get("processed_task_outcome")
+    processed_failure_details = state.get("processed_task_failure_details")
+
+    if processed_id:
+        task_updated = False
+        for task in tasks_live:
+            if task.get("id") == processed_id:
+                if processed_outcome == "SUCCESS":
+                    task["status_live"] = "CompletedSuccess"
+                    logger.info(f"Task '{processed_id}' marked as CompletedSuccess.")
+                elif processed_outcome == "FAILURE":
+                    task["status_live"] = "CompletedFailure"
+                    # TODO: Handle retries or forward_failure_to_planner based on processed_failure_details
+                    logger.error(f"Task '{processed_id}' marked as CompletedFailure. Details: {processed_failure_details}")
+                else:
+                    logger.warning(f"Task '{processed_id}' had an unknown outcome: {processed_outcome}. Status not changed.")
+                task_updated = True
+                break
+        if not task_updated:
+            logger.warning(f"Processed task ID '{processed_id}' not found in tasks_live.")
+
+    # --- Find the next task to dispatch (simple version: first "Todo" task, no dependency check yet) ---
+    next_task_to_dispatch = None
+    for task in tasks_live:
+        if task.get("status_live") == "Todo":
+            # TODO: Implement dependency checking: check task.get("dependencies", [])
+            # TODO: Implement "execute_alone" logic
+            next_task_to_dispatch = task
+            break
+
+    # --- Set next step based on findings ---
+    updated_state_dict = state.copy()
+    if next_task_to_dispatch:
+        logger.info(f"Dispatching next task: {next_task_to_dispatch.get('id')}")
+        next_task_to_dispatch["status_live"] = "InProgress" # Mark as InProgress
+        updated_state_dict["current_task_id"] = next_task_to_dispatch.get("id")
+        # Pass necessary details for codegen. For now, pass the whole task dict.
+        # codegen_task_description could be task_def.get('description')
+        # github_branch_name could be task_def.get('branch_name')
+        updated_state_dict["current_task_details"] = next_task_to_dispatch 
+        updated_state_dict["codegen_task_description"] = next_task_to_dispatch.get("description") # For initiate_codegen_node
+        updated_state_dict["orchestrator_next_step"] = "dispatch_task_for_codegen"
     else:
-        logger.info(f"Using existing codegen_task_description: {updated_state.get('codegen_task_description')}")
+        # No more tasks marked "Todo". Check if all are "CompletedSuccess".
+        all_successfully_completed = True
+        if not tasks_live: # No tasks to begin with
+            logger.info("No tasks found in tasks_live. Considering project complete.")
+            all_successfully_completed = True 
+        else:
+            for task in tasks_live:
+                if task.get("status_live") != "CompletedSuccess":
+                    all_successfully_completed = False
+                    # TODO: If there are tasks in other states (e.g., CompletedFailure not yet handled for re-plan), 
+                    # this logic might need to be more nuanced. For now, any non-success means not all done.
+                    if task.get("status_live") == "CompletedFailure":
+                        logger.warning(f"Found task '{task.get('id')}' with status CompletedFailure. Project not fully complete or needs re-planning.")
+                        # Placeholder: For now, if there's a failure, we don't consider it all_tasks_complete.
+                        # Later, this could trigger "forward_failure_to_planner"
+                        # updated_state_dict["orchestrator_next_step"] = "forward_failure_to_planner"
+                        # updated_state_dict["failed_task_details"] = task # Send this task for re-planning
+                        # For this simplified version, let's assume it blocks completion
+                        break # Exit loop, all_successfully_completed is False
+            
+        if all_successfully_completed:
+            logger.info("All tasks successfully completed.")
+            updated_state_dict["orchestrator_next_step"] = "all_tasks_complete"
+        else:
+            # If not dispatching and not all complete, what to do? Could be failures or deadlocks.
+            logger.warning("No new task to dispatch, but not all tasks are successfully completed. Possible failures or deadlock.")
+            # For now, default to __end__ if stuck. Proper handling needs failure/deadlock logic.
+            # This could also be where "forward_failure_to_planner" is set if unhandled failures exist.
+            updated_state_dict["orchestrator_next_step"] = "__end__" # Placeholder, might need re-planning route
 
-    # Ensure it's a string
-    if not isinstance(updated_state.get("codegen_task_description"), str):
-        logger.warning(f"codegen_task_description was not a string, converting. Value: {updated_state.get('codegen_task_description')}")
-        updated_state["codegen_task_description"] = str(updated_state.get("codegen_task_description"))
+    # Clear processed task feedback from state
+    updated_state_dict["processed_task_id"] = None
+    updated_state_dict["processed_task_outcome"] = None
+    updated_state_dict["processed_task_failure_details"] = None
+    
+    # Persist changes to tasks_live in the state dictionary that will be returned
+    updated_state_dict["tasks_live"] = tasks_live 
 
-    return updated_state
+    return updated_state_dict
 
 def codegen_success_node(state: State) -> State:
     logger.info(f"Codegen task SUCCEEDED. Final Result: {state.get('codegen_task_result')}")
@@ -885,23 +980,118 @@ def initial_context_node(state: State, config: RunnableConfig) -> Command[Litera
     repo_is_empty, repo_summary = check_repo_status(workspace_path)
     logger.info(f"Repo status: empty={repo_is_empty}, summary='{repo_summary}'")
 
-    # Placeholder for Linear task check
-    linear_task_exists = False
-    linear_summary = "Linear task check not implemented yet."
-    logger.info("Linear task check: placeholder, defaulting to no existing task.")
+    # Simulated Linear task check
+    # For simulation, let's randomly decide if a Linear task exists
+    linear_task_exists_simulated = random.choice([True, False])
+    simulated_linear_tasks = []
+    if linear_task_exists_simulated and not repo_is_empty: # Let's say Linear tasks usually exist for non-empty repos
+        simulated_linear_tasks = [
+            {"id": "TASK-123", "title": "Implement feature X", "status": "Todo"},
+            {"id": "TASK-124", "title": "Fix bug Y", "status": "In Progress"},
+        ]
+        linear_summary_str = f"Found {len(simulated_linear_tasks)} simulated Linear tasks."
+        logger.info(f"Simulated Linear task check: {linear_summary_str}")
+    elif linear_task_exists_simulated:
+        simulated_linear_tasks = [{"id": "TASK-001", "title": "Initial project setup", "status": "Done"}]
+        linear_summary_str = "Found 1 simulated initial Linear task."
+        logger.info(f"Simulated Linear task check: {linear_summary_str}")
+    else:
+        linear_summary_str = "No simulated Linear tasks found."
+        logger.info("Simulated Linear task check: No existing Linear task.")
 
-    initial_context_summary = f"Repository check: {repo_summary}. Linear check: {linear_summary}"
+    project_summary_dict = {
+        "repository_status": {
+            "is_empty": repo_is_empty,
+            "summary": repo_summary,
+        },
+        "linear_status": {
+            "task_exists": linear_task_exists_simulated,
+            "tasks": simulated_linear_tasks,
+            "summary": linear_summary_str,
+        }
+    }
+
+    # Determine if it's an existing project
+    is_existing_project = not repo_is_empty or linear_task_exists_simulated
+
+    # initial_context_summary string can be built from the dict for logging or simple display
+    initial_context_summary_str = f"Repository: {repo_summary}. Linear: {linear_summary_str}. Existing project: {is_existing_project}"
 
     return Command(
         update={
-            "repo_is_empty": repo_is_empty,
-            "linear_task_exists": linear_task_exists,
-            "initial_context_summary": initial_context_summary,
+            "repo_is_empty": repo_is_empty, # Keep for direct access
+            "linear_task_exists": linear_task_exists_simulated, # Keep for direct access
+            "existing_project_summary": project_summary_dict, # New detailed dictionary
+            "initial_context_summary": initial_context_summary_str, # Updated string summary
             "initial_repo_check_done": True,
-             # Add to messages so coordinator LLM sees it directly if prompt is not updated yet
+             # Add to messages so coordinator LLM sees it directly
             "messages": state["messages"] + [
-                AIMessage(content=f"[System Note: Initial context gathered. {initial_context_summary}]", name="system_context_gatherer")
+                AIMessage(content=f"[System Note: Initial context gathered. {initial_context_summary_str}]", name="system_context_gatherer")
             ]
         },
         goto="coding_coordinator",
+    )
+
+# Placeholder for human_prd_review_node
+def human_prd_review_node(state: State) -> State: # Should return State, feedback goes into state
+    """Node to wait for user feedback on the PRD."""
+    logger.info("Waiting for user feedback on the PRD...")
+    
+    # Interrupt the graph to wait for PRD feedback
+    # The actual feedback will be injected into the state by the calling environment
+    # when the interrupt is resolved.
+    prd_feedback = interrupt("Please review the PRD. Provide feedback, or type 'approve' or 'research needed'.")
+    
+    # The calling environment should place this feedback into state["prd_review_feedback"]
+    # For now, this node itself doesn't need to return the feedback directly in the Command,
+    # as coding_coordinator will pick it up from the state.
+    # However, the state object within this node's execution might be updated by the interrupt mechanism.
+
+    # Simulate that the interrupt mechanism updated the state if needed for direct testing here,
+    # but in live use, the external resume call updates the shared state object.
+    # state["prd_review_feedback"] = prd_feedback # Example if feedback was directly returned
+
+    logger.info(f"PRD feedback interrupt completed. Feedback should be in state for coordinator. Raw feedback if available here: {prd_feedback}")
+    # This node primarily serves as an interrupt point. 
+    # The 'coding_coordinator' will read the feedback from the state when the graph resumes.
+    # It doesn't direct the graph via Command, it just updates its part of the state (or rather, allows interruption for it to be updated).
+    return state # Return the current state, expecting prd_review_feedback to be set by the interrupt resolution
+
+# === New Linear Integration Node ===
+def linear_integration_node(state: State) -> Command[Literal["task_orchestrator"]]:
+    """Simulates integrating the PRD and task definitions with Linear.
+    Populates tasks_live with simulated Linear IDs and statuses.
+    """
+    logger.info("Linear Integration Node: Simulating Linear sync...")
+
+    prd_document = state.get("prd_document")
+    tasks_definition = state.get("tasks_definition")
+
+    if not prd_document or not tasks_definition:
+        logger.error("PRD document or tasks_definition missing. Cannot sync with Linear.")
+        return Command(
+            update={"messages": state["messages"] + [AIMessage(content="[System Error: PRD or Task Definition missing for Linear sync.]", name="linear_integration")]},
+            goto="task_orchestrator" # Or an error handling node
+        )
+
+    logger.info(f"Simulating creation/update of PRD in Linear: {prd_document[:100]}...")
+
+    tasks_live = []
+    for i, task_def in enumerate(tasks_definition):
+        simulated_linear_id = f"LIN-{random.randint(1000, 9999)}-{i+1}"
+        live_task = task_def.copy()
+        live_task["linear_id"] = simulated_linear_id
+        live_task["status_live"] = "Todo"
+        live_task["linear_url"] = f"https://simulated.linear.app/task/{simulated_linear_id}"
+        tasks_live.append(live_task)
+        logger.info(f"Simulated creation of task '{task_def.get('description','N/A')[:50]}...' in Linear with ID {simulated_linear_id}")
+
+    logger.info(f"Successfully simulated Linear sync. {len(tasks_live)} tasks processed.")
+
+    return Command(
+        update={
+            "tasks_live": tasks_live,
+            "messages": state["messages"] + [AIMessage(content=f"[System Note: PRD and {len(tasks_live)} tasks simulated in Linear.]", name="linear_integration")]
+        },
+        goto="task_orchestrator"
     )

@@ -1,13 +1,13 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
-import type { IconDefinition } from "@ant-design/icons/lib/icons";
-import { BankOutlined, FileOutlined, MessageSquareQuoteOutlined, CloseOutlined, SquareTerminalOutlined, CheckOutlined, UserOutlined } from "@ant-design/icons/lib/icons";
+import { BankOutlined, FileOutlined, MessageOutlined, CloseOutlined, CodeOutlined, CheckOutlined, UserOutlined } from "@ant-design/icons";
 import type { Edge, Node } from "@xyflow/react";
+import type { ElementType } from "react";
 
 export type GraphNode = Node<{
   label: string;
-  icon?: IconDefinition;
+  icon?: ElementType;
   active?: boolean;
 }>;
 
@@ -34,7 +34,7 @@ export const graph: Graph = {
     },
     {
       id: "Coordinator",
-      data: { icon: MessageSquareQuoteOutlined, label: "Coordinator" },
+      data: { icon: MessageOutlined, label: "Coordinator" },
       position: { x: 150, y: ROW_1 },
     },
     {
@@ -64,7 +64,7 @@ export const graph: Graph = {
     },
     {
       id: "Coder",
-      data: { icon: SquareTerminalOutlined, label: "Coder" },
+      data: { icon: CodeOutlined, label: "Coder" },
       position: { x: 125, y: ROW_6 },
     },
     {

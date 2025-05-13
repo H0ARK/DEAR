@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def github_manager_node(
     state: State, config: RunnableConfig
-) -> Command[Literal["coder", "coding_planner", "__end__"]]:
+) -> Command[Literal["task_orchestrator", "coding_planner", "__end__"]]:
     """Node that manages GitHub operations like branch creation, merging, and PR creation."""
     logger.info("GitHub Manager node executing...")
     configurable = Configuration.from_runnable_config(config)
@@ -124,8 +124,8 @@ def github_manager_node(
 
                 result_message += f"\nCreated Linear task: {task.id} - {task.title}"
 
-            # Set next node to coder to start implementing the task
-            goto = "coder"
+            # Set next node to task_orchestrator to start implementing the task
+            goto = "task_orchestrator"
 
         elif github_action == "merge_task_branch":
             # Get branch details from state

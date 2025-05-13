@@ -44,6 +44,9 @@ def build_graph():
     return builder.compile()
 
 
+workflow = build_graph()
+
+
 async def _test_workflow():
     workflow = build_graph()
     events = workflow.astream(

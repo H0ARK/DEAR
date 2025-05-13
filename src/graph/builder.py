@@ -99,4 +99,5 @@ def build_graph():
     return builder.compile()
 
 
-graph = build_graph()
+# Create the graph instance
+# graph = build_graph()

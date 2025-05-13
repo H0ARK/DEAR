@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def context_gathering_node(
     state: State, config: RunnableConfig
-) -> Command[Literal["coding_planner", "__end__"]]:
+) -> Command[Literal["research_team"]]:
     """Node that gathers context from Linear and the repository before planning."""
     logger.info("Context gathering node executing...")
     configurable = Configuration.from_runnable_config(config)
@@ -346,15 +346,18 @@ def context_gathering_node(
     if "repo_error" in context_info:
         context_summary += f"⚠️ Repository Analysis Error: {context_info['repo_error']}\n"
 
-    # Determine where to go next based on the current workflow
-    goto = "coding_planner"  # Default to coding planner
-    # The research workflow also uses the coding_planner for now
-
-    # Update state with context information
+    # For the research path, we primarily want to ensure the state is passed correctly.
+    # The detailed context_summary might be less relevant for research_team which will use its own tools.
+    # However, context_info might still be useful.
+    logger.info("Context gathering complete. Proceeding to research_team.")
     return Command(
         update={
-            "messages": state["messages"] + [AIMessage(content=context_summary, name="context_gatherer")],
-            "context_info": context_info
+            "messages": state["messages"]
+            + [AIMessage(content=f"Context gathered, preparing for research. {context_summary}", name="context_gatherer")],
+            "context_info": context_info,
         },
-        goto=goto
+        goto="research_team",
     )
+
+# Placeholder for a more detailed repository analysis function if needed separately
+# def analyze_repository_node(state: State, config: RunnableConfig) -> State:

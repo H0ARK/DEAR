@@ -1,8 +1,8 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
-import { BikeOutlined, BuildingOutlined, FilmOutlined, GithubOutlined, HamOutlined, HomeOutlined, PizzaOutlined } from "@ant-design/icons";
-import { BotOutlined } from "@ant-design/icons";
+import { LikeOutlined, BuildOutlined, FileOutlined, GithubOutlined, AimOutlined, HomeOutlined, ApiOutlined } from "@ant-design/icons";
+import { RobotOutlined } from "@ant-design/icons";
 
 import { BentoCard } from "~/components/magicui/bento-grid";
 
@@ -11,7 +11,7 @@ import { SectionHeader } from "../components/section-header";
 const caseStudies = [
   {
     id: "eiffel-tower-vs-tallest-building",
-    icon: BuildingOutlined,
+    icon: BuildOutlined,
     title: "How tall is Eiffel Tower compared to tallest building?",
     description:
       "The research compares the heights and global significance of the Eiffel Tower and Burj Khalifa, and uses Python code to calculate the multiples.",
@@ -25,7 +25,7 @@ const caseStudies = [
   },
   {
     id: "nanjing-traditional-dishes",
-    icon: HamOutlined,
+    icon: AimOutlined,
     title: "Write an article about Nanjing's traditional dishes",
     description:
       "The study vividly showcases Nanjing's famous dishes through rich content and imagery, uncovering their hidden histories and cultural significance.",
@@ -39,28 +39,28 @@ const caseStudies = [
   },
   {
     id: "review-of-the-professional",
-    icon: FilmOutlined,
+    icon: FileOutlined,
     title: "Introduce the movie 'Léon: The Professional'",
     description:
       "The research provides a comprehensive introduction to the movie 'Léon: The Professional', including its plot, characters, and themes.",
   },
   {
     id: "china-food-delivery",
-    icon: BikeOutlined,
+    icon: LikeOutlined,
     title: "How do you view the takeaway war in China? (in Chinese)",
     description:
       "The research analyzes the intensifying competition between JD and Meituan, highlighting their strategies, technological innovations, and challenges.",
   },
   {
     id: "ultra-processed-foods",
-    icon: PizzaOutlined,
+    icon: ApiOutlined,
     title: "Are ultra-processed foods linked to health?",
     description:
       "The research examines the health risks of rising ultra-processed food consumption, urging more research on long-term effects and individual differences.",
   },
   {
     id: "ai-twin-insurance",
-    icon: BotOutlined,
+    icon: RobotOutlined,
     title: 'Write an article on "Would you insure your AI twin?"',
     description:
       "The research explores the concept of insuring AI twins, highlighting their benefits, risks, ethical considerations, and the evolving regulatory.",

@@ -19,9 +19,8 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type ElementType } from "react";
 
-import { type LucideIcon } from "~/components/deer-flow/icons/lucide-icon";
 import { Tooltip } from "~/components/deer-flow/tooltip";
 import { ShineBorder } from "~/components/magicui/shine-border";
 import { Button } from "~/components/ui/button";
@@ -216,7 +215,7 @@ function AgentNode({
   id,
 }: {
   data: {
-    icon?: LucideIcon;
+    icon?: ElementType;
     label: string;
     active: boolean;
     stepDescription?: string;

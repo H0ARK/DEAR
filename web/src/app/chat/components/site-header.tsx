@@ -1,9 +1,9 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
+import { GithubOutlined, StarOutlined } from "@ant-design/icons";
 import Link from "next/link";
 
-import { LucideIcon } from "~/components/deer-flow/icons/lucide-icon";
 import { NumberTicker } from "~/components/magicui/number-ticker";
 import { Button } from "~/components/ui/button";
 import { env } from "~/env";
@@ -31,7 +31,7 @@ export async function SiteHeader() {
             className="group relative z-10"
           >
             <Link href="https://github.com/bytedance/deer-flow" target="_blank">
-              <LucideIcon name="github" className="size-4" />
+              <GithubOutlined className="size-4" />
               Star on GitHub
               {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY &&
                 env.GITHUB_OAUTH_TOKEN && <StarCounter />}
@@ -72,7 +72,7 @@ export async function StarCounter() {
   }
   return (
     <>
-      <LucideIcon name="star" className="size-4 transition-colors duration-300 group-hover:text-yellow-500" />
+      <StarOutlined className="size-4 transition-colors duration-300 group-hover:text-yellow-500" />
       {stars && (
         <NumberTicker className="font-mono tabular-nums" value={stars} />
       )}

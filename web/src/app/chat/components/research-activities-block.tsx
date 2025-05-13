@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
-import { PythonOutlined } from "@ant-design/icons";
+import { PythonOutlined } from "@ant-design/icons/lib/icons";
 import { motion } from "framer-motion";
 import { LRUCache } from "lru-cache";
 import { BookOpenText, PencilRuler, Search } from "lucide-react";

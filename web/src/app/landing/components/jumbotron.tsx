@@ -4,7 +4,6 @@
 import { RightOutlined } from "@ant-design/icons";
 import Link from "next/link";
 
-import { LucideIcon } from "~/components/deer-flow/icons/lucide-icon";
 import { AuroraText } from "~/components/magicui/aurora-text";
 import { FlickeringGrid } from "~/components/magicui/flickering-grid";
 import { Button } from "~/components/ui/button";
@@ -56,7 +55,7 @@ export function Jumbotron() {
                   : "/chat"
               }
             >
-              Get Started <LucideIcon name="arrow-right" />
+              Get Started <RightOutlined />
             </Link>
           </Button>
           {!env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY && (
