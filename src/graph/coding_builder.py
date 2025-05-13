@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from langgraph.graph import StateGraph, START, END, Command
+from langgraph.types import Command
 from langgraph.checkpoint.memory import MemorySaver
 import logging
 from typing import Literal

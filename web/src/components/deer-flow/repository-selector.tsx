@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useState } from "react";
-import { PlusCircleOutlined, BranchesOutlined, DashOutlined, KeyOutlined } from "@ant-design/icons";
+import { PlusCircle, GitBranch, Trash2, Loader2, Key } from "lucide-react";
 
 import {
   Select,
@@ -31,9 +31,9 @@ import {
   addRepository,
   setCurrentRepository,
   removeRepository,
+  type Repository,
   fetchRepositoriesFromGitHub,
 } from "~/core/store/repository-store";
-import { LoadingOutlined } from "@ant-design/icons";
 
 export function RepositorySelector() {
   const { repositories, currentRepository, isLoading } = useRepositoryStore();
@@ -149,17 +149,17 @@ export function RepositorySelector() {
             <SelectValue placeholder="Select a repository">
               {isLoading ? (
                 <div className="flex items-center gap-2">
-                  <LoadingOutlined className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   <span>Loading...</span>
                 </div>
               ) : currentRepository ? (
                 <div className="flex items-center gap-2">
-                  <BranchesOutlined className="h-4 w-4" />
+                  <GitBranch className="h-4 w-4" />
                   <span>{currentRepository.fullName}</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <BranchesOutlined className="h-4 w-4" />
+                  <GitBranch className="h-4 w-4" />
                   <span>Select a repository</span>
                 </div>
               )}
@@ -173,7 +173,7 @@ export function RepositorySelector() {
                   <SelectItem key={repo.id} value={repo.id} className="flex justify-between">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-2">
-                        <BranchesOutlined className="h-4 w-4" />
+                        <GitBranch className="h-4 w-4" />
                         <span>{repo.fullName}</span>
                       </div>
                       <Button
@@ -182,7 +182,7 @@ export function RepositorySelector() {
                         className="h-6 w-6"
                         onClick={(e) => handleRemoveRepository(e, repo.id)}
                       >
-                        <DashOutlined className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </SelectItem>
@@ -191,7 +191,7 @@ export function RepositorySelector() {
             )}
             <SelectItem value="add-new">
               <div className="flex items-center gap-2 text-primary">
-                <PlusCircleOutlined className="h-4 w-4" />
+                <PlusCircle className="h-4 w-4" />
                 <span>Add new repository</span>
               </div>
             </SelectItem>
@@ -207,7 +207,7 @@ export function RepositorySelector() {
         onClick={() => setTokenDialogOpen(true)}
         title="Configure GitHub Token"
       >
-        <KeyOutlined className="h-4 w-4" />
+        <Key className="h-4 w-4" />
       </Button>
 
       {/* Add Repository Dialog */}
@@ -240,7 +240,7 @@ export function RepositorySelector() {
             <Button onClick={handleAddRepository} disabled={isAddingRepo}>
               {isAddingRepo ? (
                 <>
-                  <LoadingOutlined className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Adding...
                 </>
               ) : (

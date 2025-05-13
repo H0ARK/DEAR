@@ -26,11 +26,12 @@ class LinearTask:
     completed: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-    labels: List[str] = field(default_factory=list)
+    labels: List[str] = None
     project_id: Optional[str] = None
 
     def __post_init__(self):
-        pass
+        if self.labels is None:
+            self.labels = []
 
 @dataclass
 class LinearProject:

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -115,6 +116,7 @@ export function GitHubTokenDialog({
             {isLoading ? (
               <>
                 <LoadingOutlined className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Saving...
               </>
             ) : (
