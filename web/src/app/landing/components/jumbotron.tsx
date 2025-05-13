@@ -1,10 +1,10 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
-import { GithubFilled } from "@ant-design/icons";
-import { ChevronRight } from "lucide-react";
+import { RightOutlined } from "@ant-design/icons";
 import Link from "next/link";
 
+import { LucideIcon } from "~/components/deer-flow/icons/lucide-icon";
 import { AuroraText } from "~/components/magicui/aurora-text";
 import { FlickeringGrid } from "~/components/magicui/flickering-grid";
 import { Button } from "~/components/ui/button";
@@ -56,7 +56,7 @@ export function Jumbotron() {
                   : "/chat"
               }
             >
-              Get Started <ChevronRight />
+              Get Started <LucideIcon name="arrow-right" />
             </Link>
           </Button>
           {!env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY && (
@@ -70,7 +70,6 @@ export function Jumbotron() {
                 href="https://github.com/bytedance/deer-flow"
                 target="_blank"
               >
-                <GithubFilled />
                 Learn More
               </Link>
             </Button>

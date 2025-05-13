@@ -1,21 +1,13 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
+import type { IconDefinition } from "@ant-design/icons/lib/icons";
+import { BankOutlined, FileOutlined, MessageSquareQuoteOutlined, CloseOutlined, SquareTerminalOutlined, CheckOutlined, UserOutlined } from "@ant-design/icons/lib/icons";
 import type { Edge, Node } from "@xyflow/react";
-import {
-  Brain,
-  FilePen,
-  MessageSquareQuote,
-  Microscope,
-  SquareTerminal,
-  UserCheck,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
 
 export type GraphNode = Node<{
   label: string;
-  icon?: LucideIcon;
+  icon?: IconDefinition;
   active?: boolean;
 }>;
 
@@ -42,37 +34,37 @@ export const graph: Graph = {
     },
     {
       id: "Coordinator",
-      data: { icon: MessageSquareQuote, label: "Coordinator" },
+      data: { icon: MessageSquareQuoteOutlined, label: "Coordinator" },
       position: { x: 150, y: ROW_1 },
     },
     {
       id: "Planner",
-      data: { icon: Brain, label: "Planner" },
+      data: { icon: BankOutlined, label: "Planner" },
       position: { x: 150, y: ROW_2 },
     },
     {
       id: "Reporter",
-      data: { icon: FilePen, label: "Reporter" },
+      data: { icon: FileOutlined, label: "Reporter" },
       position: { x: 275, y: ROW_3 },
     },
     {
       id: "HumanFeedback",
-      data: { icon: UserCheck, label: "Human Feedback" },
+      data: { icon: CloseOutlined, label: "Human Feedback" },
       position: { x: 25, y: ROW_4 },
     },
     {
       id: "ResearchTeam",
-      data: { icon: Users, label: "Research Team" },
+      data: { icon: UserOutlined, label: "Research Team" },
       position: { x: 25, y: ROW_5 },
     },
     {
       id: "Researcher",
-      data: { icon: Microscope, label: "Researcher" },
+      data: { icon: CheckOutlined, label: "Researcher" },
       position: { x: -75, y: ROW_6 },
     },
     {
       id: "Coder",
-      data: { icon: SquareTerminal, label: "Coder" },
+      data: { icon: SquareTerminalOutlined, label: "Coder" },
       position: { x: 125, y: ROW_6 },
     },
     {

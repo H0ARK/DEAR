@@ -6,6 +6,7 @@ import os
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 import requests
+from dataclasses import field
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +26,11 @@ class LinearTask:
     completed: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-    labels: List[str] = None
+    labels: List[str] = field(default_factory=list)
     project_id: Optional[str] = None
 
     def __post_init__(self):
-        if self.labels is None:
-            self.labels = []
+        pass
 
 @dataclass
 class LinearProject:
@@ -70,35 +70,35 @@ class LinearService:
         }
         logger.info("Initialized Linear service")
 
-    def execute_query(self, query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Execute a GraphQL query against the Linear API.
+        def execute_query(self, query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            """Execute a GraphQL query against the Linear API.
 
-        Args:
-            query: GraphQL query string
-            variables: Optional variables for the query
+            Args:
+                query: GraphQL query string
+                variables: Optional variables for the query
 
-        Returns:
-            Response data from Linear API
-        """
-        payload = {"query": query}
-        if variables:
-            payload["variables"] = variables
+            Returns:
+                Response data from Linear API
+            """
+            payload = {"query": query}
+            if variables is not None:
+                payload["variables"] = variables
 
-        try:
-            response = requests.post(
-                self.api_url,
-                json=payload,
-                headers=self.headers
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error executing Linear API query: {e}")
-            # Return a default response instead of raising an exception
-            return {
-                "data": None,
-                "errors": [{"message": str(e)}]
-            }
+            try:
+                response = requests.post(
+                    self.api_url,
+                    json=payload,
+                    headers=self.headers
+                )
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Error executing Linear API query: {e}")
+                # Return a default response instead of raising an exception
+                return {
+                    "data": None,
+                    "errors": [{"message": str(e)}]
+                }
 
     def create_task(self, title: str, description: str, team_id: Optional[str] = None,
                    assignee_id: Optional[str] = None, priority: Optional[int] = None) -> LinearTask:

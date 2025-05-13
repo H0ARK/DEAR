@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 "use client";
-
+import {
+  PlayCircleOutlined,
+  PauseCircleOutlined,
+  ZoomInOutlined,
+  ZoomOutOutlined,
+  RightOutlined,
+  LeftOutlined,
+} from "@ant-design/icons";
 import {
   ReactFlow,
   Background,
@@ -11,18 +18,10 @@ import {
   type Edge,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import {
-  Play,
-  type LucideIcon,
-  ChevronRight,
-  ChevronLeft,
-  Pause,
-  Fullscreen,
-  Minimize,
-} from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useRef, useState } from "react";
 
+import { type LucideIcon } from "~/components/deer-flow/icons/lucide-icon";
 import { Tooltip } from "~/components/deer-flow/tooltip";
 import { ShineBorder } from "~/components/magicui/shine-border";
 import { Button } from "~/components/ui/button";
@@ -122,15 +121,15 @@ export function MultiAgentVisualization({ className }: { className?: string }) {
         <div className="bg-muted/50 z-[200] flex rounded-3xl px-4 py-2">
           <Tooltip title="Move to the previous step">
             <Button variant="ghost" onClick={prevStep}>
-              <ChevronLeft className="size-5" />
+              <LeftOutlined className="size-5" />
             </Button>
           </Tooltip>
           <Tooltip title="Play / Pause">
             <Button variant="ghost" onClick={togglePlay}>
               {playing ? (
-                <Pause className="size-5" />
+                <PauseCircleOutlined className="size-5" />
               ) : (
-                <Play className="size-5" />
+                <PlayCircleOutlined className="size-5" />
               )}
             </Button>
           </Tooltip>
@@ -142,7 +141,7 @@ export function MultiAgentVisualization({ className }: { className?: string }) {
                 nextStep();
               }}
             >
-              <ChevronRight className="size-5" />
+              <RightOutlined className="size-5" />
             </Button>
           </Tooltip>
           <div className="text-muted-foreground ml-2 flex items-center justify-center">
@@ -168,9 +167,9 @@ export function MultiAgentVisualization({ className }: { className?: string }) {
               }}
             >
               {fullscreen ? (
-                <Minimize className="size-5" />
+                <ZoomOutOutlined className="size-5" />
               ) : (
-                <Fullscreen className="size-5" />
+                <ZoomInOutlined className="size-5" />
               )}
             </Button>
           </Tooltip>

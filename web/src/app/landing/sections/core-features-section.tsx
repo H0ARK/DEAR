@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
-import { Bird, Microscope, Podcast, Usb, User } from "lucide-react";
+import { BaiduOutlined, CloseOutlined, ProductOutlined, UsbOutlined, UserOutlined } from "@ant-design/icons";
 
 import { BentoCard, BentoGrid } from "~/components/magicui/bento-grid";
 
@@ -9,7 +9,7 @@ import { SectionHeader } from "../components/section-header";
 
 const features = [
   {
-    Icon: Microscope,
+    Icon: CloseOutlined,
     name: "Dive Deeper and Reach Wider",
     description:
       "Unlock deeper insights with advanced tools. Our powerful search + crawling and Python tools gathers comprehensive data, delivering in-depth reports to enhance your study.",
@@ -21,7 +21,7 @@ const features = [
     className: "lg:col-start-1 lg:col-end-2 lg:row-start-1 lg:row-end-3",
   },
   {
-    Icon: User,
+    Icon: UserOutlined,
     name: "Human-in-the-loop",
     description:
       "Refine your research plan, or adjust focus areas all through simple natural language.",
@@ -33,7 +33,7 @@ const features = [
     className: "lg:col-start-1 lg:col-end-2 lg:row-start-3 lg:row-end-4",
   },
   {
-    Icon: Bird,
+    Icon: BaiduOutlined,
     name: "Lang Stack",
     description:
       "Build with confidence using the LangChain and LangGraph frameworks.",
@@ -45,7 +45,7 @@ const features = [
     className: "lg:col-start-2 lg:col-end-3 lg:row-start-1 lg:row-end-2",
   },
   {
-    Icon: Usb,
+    Icon: UsbOutlined,
     name: "MCP Integrations",
     description:
       "Supercharge your research workflow and expand your toolkit with seamless MCP integrations.",
@@ -57,7 +57,7 @@ const features = [
     className: "lg:col-start-2 lg:col-end-3 lg:row-start-2 lg:row-end-3",
   },
   {
-    Icon: Podcast,
+    Icon: ProductOutlined,
     name: "Podcast Generation",
     description:
       "Instantly generate podcasts from reports. Perfect for on-the-go learning or sharing findings effortlessly.  ",

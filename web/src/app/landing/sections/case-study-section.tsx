@@ -1,8 +1,8 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
-import { Bike, Building, Film, Github, Ham, Home, Pizza } from "lucide-react";
-import { Bot } from "lucide-react";
+import { BikeOutlined, BuildingOutlined, FilmOutlined, GithubOutlined, HamOutlined, HomeOutlined, PizzaOutlined } from "@ant-design/icons";
+import { BotOutlined } from "@ant-design/icons";
 
 import { BentoCard } from "~/components/magicui/bento-grid";
 
@@ -11,56 +11,56 @@ import { SectionHeader } from "../components/section-header";
 const caseStudies = [
   {
     id: "eiffel-tower-vs-tallest-building",
-    icon: Building,
+    icon: BuildingOutlined,
     title: "How tall is Eiffel Tower compared to tallest building?",
     description:
       "The research compares the heights and global significance of the Eiffel Tower and Burj Khalifa, and uses Python code to calculate the multiples.",
   },
   {
     id: "github-top-trending-repo",
-    icon: Github,
+    icon: GithubOutlined,
     title: "What are the top trending repositories on GitHub?",
     description:
       "The research utilized MCP services to identify the most popular GitHub repositories and documented them in detail using search engines.",
   },
   {
     id: "nanjing-traditional-dishes",
-    icon: Ham,
+    icon: HamOutlined,
     title: "Write an article about Nanjing's traditional dishes",
     description:
       "The study vividly showcases Nanjing's famous dishes through rich content and imagery, uncovering their hidden histories and cultural significance.",
   },
   {
     id: "rental-apartment-decoration",
-    icon: Home,
+    icon: HomeOutlined,
     title: "How to decorate a small rental apartment?",
     description:
       "The study provides readers with practical and straightforward methods for decorating apartments, accompanied by inspiring images.",
   },
   {
     id: "review-of-the-professional",
-    icon: Film,
+    icon: FilmOutlined,
     title: "Introduce the movie 'Léon: The Professional'",
     description:
       "The research provides a comprehensive introduction to the movie 'Léon: The Professional', including its plot, characters, and themes.",
   },
   {
     id: "china-food-delivery",
-    icon: Bike,
+    icon: BikeOutlined,
     title: "How do you view the takeaway war in China? (in Chinese)",
     description:
       "The research analyzes the intensifying competition between JD and Meituan, highlighting their strategies, technological innovations, and challenges.",
   },
   {
     id: "ultra-processed-foods",
-    icon: Pizza,
+    icon: PizzaOutlined,
     title: "Are ultra-processed foods linked to health?",
     description:
       "The research examines the health risks of rising ultra-processed food consumption, urging more research on long-term effects and individual differences.",
   },
   {
     id: "ai-twin-insurance",
-    icon: Bot,
+    icon: BotOutlined,
     title: 'Write an article on "Would you insure your AI twin?"',
     description:
       "The research explores the concept of insuring AI twins, highlighting their benefits, risks, ethical considerations, and the evolving regulatory.",

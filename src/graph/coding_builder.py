@@ -1,8 +1,7 @@
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
 
-from langgraph.graph import StateGraph, START, END
-from langgraph.types import Command
+from langgraph.graph import StateGraph, START, END, Command
 from langgraph.checkpoint.memory import MemorySaver
 import logging
 from typing import Literal
@@ -117,7 +116,7 @@ def build_coding_graph():
     builder.add_node("github_manager", github_manager_node)
     builder.add_node("github_planning", github_planning_node)
 
-    # --- Define a new simple routing node ---
+    # --- Define a new simple routing node --- 
     def route_after_plan_acceptance_node(state: State) -> Command[Literal["github_planning", "coder"]]:
         logger.info("Routing after plan acceptance...")
         if state.get("feature_branch_name"):
@@ -127,7 +126,7 @@ def build_coding_graph():
             logger.info("No feature branch planned, routing to coder.")
             return Command(goto="coder")
     builder.add_node("route_after_plan_acceptance", route_after_plan_acceptance_node)
-    # --- End new routing node ---
+    # --- End new routing node --- 
 
     # Define edges
     builder.add_edge(START, "initial_context")
@@ -160,7 +159,7 @@ def build_coding_graph():
     builder.add_edge("codegen_success", END)
     builder.add_edge("codegen_failure", END)
 
-    # --- Plan Feedback Loop ---
+    # --- Plan Feedback Loop --- 
     builder.add_edge("coding_planner", "human_feedback_plan")
 
     def should_revise_plan(state: State) -> Literal["revise", "accept"]:
@@ -196,7 +195,7 @@ def build_coding_graph():
             "coder": "coder"
         }
     )
-    # --- End Plan Feedback Loop ---
+    # --- End Plan Feedback Loop --- 
 
     builder.add_conditional_edges(
         "github_planning",

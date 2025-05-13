@@ -1,4 +1,4 @@
-import { ArrowRightIcon } from "@radix-ui/react-icons";
+import { RightOutlined } from "@ant-design/icons";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
@@ -73,7 +73,7 @@ const BentoCard = ({
       <Button variant="ghost" asChild size="sm" className="pointer-events-auto">
         <a href={href}>
           {cta}
-          <ArrowRightIcon className="ms-2 h-4 w-4 rtl:rotate-180" />
+          <RightOutlined className="ms-2 h-4 w-4 rtl:rotate-180" />
         </a>
       </Button>
     </div>

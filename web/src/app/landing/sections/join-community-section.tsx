@@ -1,9 +1,9 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
-import { GithubFilled } from "@ant-design/icons";
 import Link from "next/link";
 
+import { LucideIcon } from "~/components/deer-flow/icons/lucide-icon";
 import { AuroraText } from "~/components/magicui/aurora-text";
 import { Button } from "~/components/ui/button";
 
@@ -23,7 +23,7 @@ export function JoinCommunitySection() {
       />
       <Button className="text-xl" size="lg" asChild>
         <Link href="https://github.com/bytedance/deer-flow" target="_blank">
-          <GithubFilled />
+          <LucideIcon name="github" className="mr-2 h-4 w-4" />
           Contribute Now
         </Link>
       </Button>

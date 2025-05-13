@@ -1,8 +1,8 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
-import { create } from "zustand";
 import { toast } from "sonner";
+import { create } from "zustand";
 
 const REPOSITORIES_KEY = "deerflow.repositories";
 const GITHUB_API_URL = "https://api.github.com";
@@ -16,6 +16,20 @@ export type Repository = {
   url: string;
   lastUsed: Date;
 };
+
+interface StoredRepository extends Omit<Repository, 'lastUsed'> {
+  lastUsed: string;
+}
+
+interface GitHubRepo {
+  full_name: string;
+  name: string;
+  owner: {
+    login: string;
+  };
+  description: string | null;
+  html_url: string;
+}
 
 export type RepositoryState = {
   repositories: Repository[];
@@ -41,7 +55,7 @@ export function loadRepositories() {
       const parsed = JSON.parse(storedData);
 
       // Convert string dates back to Date objects
-      const repositories = parsed.repositories.map((repo: any) => ({
+      const repositories = parsed.repositories.map((repo: StoredRepository) => ({
         ...repo,
         lastUsed: new Date(repo.lastUsed),
       }));
@@ -185,13 +199,13 @@ export async function fetchRepositoriesFromGitHub() {
     const repos = await response.json();
 
     // Add each repository to the store
-    repos.forEach((repo: any) => {
+    repos.forEach((repo: GitHubRepo) => {
       addRepository({
         id: repo.full_name,
         owner: repo.owner.login,
         name: repo.name,
         fullName: repo.full_name,
-        description: repo.description,
+        description: repo.description ?? undefined,
         url: repo.html_url
       });
     });

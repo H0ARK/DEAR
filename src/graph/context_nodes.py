@@ -62,72 +62,6 @@ def context_gathering_node(
         logger.error(f"Error analyzing repository: {e}")
         context_info["repo_error"] = str(e)
 
-    # Check if a repository was selected in the UI
-    if state.get("repository"):
-        try:
-            repo_info = state["repository"]
-            logger.info(f"Using repository selected in UI: {repo_info['fullName']}")
-
-            # Update context info with the selected repository
-            context_info["selected_repository"] = {
-                "owner": repo_info["owner"],
-                "name": repo_info["name"],
-                "full_name": repo_info["fullName"],
-                "url": repo_info["url"]
-            }
-
-            # If we're using the repository picker, we don't create a workspace
-            # This preserves the original repository picker functionality
-            logger.info(f"Repository picker is active, using repository: {repo_info['fullName']}")
-
-        except Exception as e:
-            logger.error(f"Error processing selected repository: {e}")
-
-    # Check if we should create a workspace for this session
-    # This is optional and disabled by default to maintain compatibility with the GitHub repository picker
-    create_workspace = configurable.create_workspace if hasattr(configurable, 'create_workspace') else False
-
-    if create_workspace and not state.get("repository"):
-        try:
-            from src.tools.workspace_manager import WorkspaceManager
-
-            # Create or get the workspace manager
-            workspace_manager = WorkspaceManager(configurable.repo_path or ".")
-
-            # Create a new workspace for this session
-            workspace_description = "Agent workspace for " + (
-                context_info["git_info"]["remote_url"].split("/")[-1].replace(".git", "")
-                if context_info.get("git_info") and context_info["git_info"].get("remote_url")
-                else "unknown repository"
-            )
-
-            workspace = workspace_manager.create_workspace(description=workspace_description)
-            logger.info(f"Created workspace {workspace.id} with branch {workspace.branch_name}")
-
-            # Switch to the workspace branch
-            workspace_manager.switch_to_workspace(workspace.id)
-
-            # Add workspace info to context
-            context_info["workspace"] = {
-                "id": workspace.id,
-                "branch_name": workspace.branch_name,
-                "base_branch": workspace.base_branch,
-                "created_at": workspace.created_at,
-                "description": workspace.description
-            }
-        except Exception as e:
-            logger.error(f"Error creating workspace: {e}")
-            context_info["workspace_error"] = str(e)
-    else:
-        if create_workspace and state.get("repository"):
-            logger.info("Repository picker is active, workspace creation is disabled")
-        else:
-            logger.info("Workspace creation is disabled, using current branch")
-
-        # Add current branch info to context
-        if context_info.get("git_info") and context_info["git_info"].get("current_branch"):
-            context_info["current_branch"] = context_info["git_info"]["current_branch"]
-
     # Get Linear tasks and epics if configured
     if configurable.linear_api_key and configurable.linear_team_id:
         try:
@@ -158,116 +92,76 @@ def context_gathering_node(
                 logger.info(f"Using repository name as project name: {project_name}")
 
             if project_name:
-                try:
-                    project = linear_service.filter_or_create_project(
-                        project_name=project_name,
-                        description=f"Project created by DEAR agent for {configurable.linear_team_id}"
-                    )
-                    logger.info(f"Using Linear project: {project.name} (ID: {project.id})")
-
-                    # Update workspace with Linear project ID if we have a workspace
-                    if context_info.get("workspace"):
-                        workspace.linear_project_id = project.id
-
-                    context_info["linear_project"] = {
-                        "id": project.id,
-                        "name": project.name,
-                        "description": project.description[:200] + "..." if len(project.description) > 200 else project.description,
-                        "state": project.state,
-                        "team_ids": project.team_ids
-                    }
-                except Exception as project_error:
-                    logger.error(f"Error creating Linear project: {project_error}")
-                    # Create a dummy project for testing
-                    context_info["linear_project"] = {
-                        "id": "dummy-project-id",
-                        "name": project_name,
-                        "description": f"Project created by DEAR agent for {configurable.linear_team_id}",
-                        "state": "Active",
-                        "team_ids": [configurable.linear_team_id]
-                    }
+                project = linear_service.filter_or_create_project(
+                    project_name=project_name,
+                    description=f"Project created by DEAR agent for {configurable.linear_team_id}"
+                )
+                logger.info(f"Using Linear project: {project.name} (ID: {project.id})")
+                context_info["linear_project"] = {
+                    "id": project.id,
+                    "name": project.name,
+                    "description": project.description[:200] + "..." if len(project.description) > 200 else project.description,
+                    "state": project.state,
+                    "team_ids": project.team_ids
+                }
 
             # Get active tasks
-            try:
-                tasks = linear_service.get_team_tasks(include_completed=False)
-                if tasks:
-                    # Filter tasks by project if a project is specified
-                    if project:
-                        tasks = [task for task in tasks if task.project_id == project.id]
+            tasks = linear_service.get_team_tasks(include_completed=False)
+            if tasks:
+                # Filter tasks by project if a project is specified
+                if project:
+                    tasks = [task for task in tasks if task.project_id == project.id]
 
-                    context_info["linear_tasks"] = [
-                        {
-                            "id": task.id,
-                            "title": task.title,
-                            "description": task.description[:200] + "..." if len(task.description) > 200 else task.description,
-                            "state": task.state,
-                            "parent_id": task.parent_id,
-                            "labels": task.labels,
-                            "project_id": task.project_id
-                        }
-                        for task in tasks
-                    ]
-                else:
-                    context_info["linear_tasks"] = []
-                    logger.info("No active tasks found in Linear or unable to fetch tasks")
-            except Exception as tasks_error:
-                logger.error(f"Error retrieving Linear tasks: {tasks_error}")
+                context_info["linear_tasks"] = [
+                    {
+                        "id": task.id,
+                        "title": task.title,
+                        "description": task.description[:200] + "..." if len(task.description) > 200 else task.description,
+                        "state": task.state,
+                        "parent_id": task.parent_id,
+                        "labels": task.labels,
+                        "project_id": task.project_id
+                    }
+                    for task in tasks
+                ]
+            else:
                 context_info["linear_tasks"] = []
+                logger.info("No active tasks found in Linear or unable to fetch tasks")
 
             # Get epics
-            try:
-                epics = linear_service.get_epics()
-                if epics:
-                    # Filter epics by project if a project is specified
-                    if project:
-                        epics = [epic for epic in epics if epic.project_id == project.id]
+            epics = linear_service.get_epics()
+            if epics:
+                # Filter epics by project if a project is specified
+                if project:
+                    epics = [epic for epic in epics if epic.project_id == project.id]
 
-                    context_info["linear_epics"] = [
-                        {
-                            "id": epic.id,
-                            "title": epic.title,
-                            "description": epic.description[:200] + "..." if len(epic.description) > 200 else epic.description,
-                            "state": epic.state,
-                            "completed": epic.completed,
-                            "labels": epic.labels,
-                            "project_id": epic.project_id
-                        }
-                        for epic in epics
-                    ]
-                else:
-                    context_info["linear_epics"] = []
-                    logger.info("No epics found in Linear or unable to fetch epics")
-            except Exception as epics_error:
-                logger.error(f"Error retrieving Linear epics: {epics_error}")
+                context_info["linear_epics"] = [
+                    {
+                        "id": epic.id,
+                        "title": epic.title,
+                        "description": epic.description[:200] + "..." if len(epic.description) > 200 else epic.description,
+                        "state": epic.state,
+                        "completed": epic.completed,
+                        "labels": epic.labels,
+                        "project_id": epic.project_id
+                    }
+                    for epic in epics
+                ]
+            else:
                 context_info["linear_epics"] = []
+                logger.info("No epics found in Linear or unable to fetch epics")
 
-            logger.info(f"Retrieved {len(context_info.get('linear_tasks', []))} active tasks and {len(context_info.get('linear_epics', []))} epics from Linear")
+            logger.info(f"Retrieved {len(tasks)} active tasks and {len(epics)} epics from Linear")
         except Exception as e:
             logger.error(f"Error retrieving Linear context: {e}")
             context_info["linear_error"] = str(e)
             context_info["linear_tasks"] = []
             context_info["linear_epics"] = []
-    else:
-        logger.info("Linear API key or team ID not configured. Skipping Linear integration.")
-        context_info["linear_tasks"] = []
-        context_info["linear_epics"] = []
 
     # Repository analysis was already done at the beginning of the function
 
     # Create a summary message for the planner
     context_summary = "# Context Information\n\n"
-
-    # Add workspace information if available
-    if context_info.get("workspace"):
-        context_summary += "## Workspace Information\n"
-        context_summary += f"- Workspace ID: {context_info['workspace']['id']}\n"
-        context_summary += f"- Branch: {context_info['workspace']['branch_name']}\n"
-        context_summary += f"- Base Branch: {context_info['workspace']['base_branch']}\n"
-        context_summary += f"- Created: {context_info['workspace']['created_at']}\n"
-        context_summary += f"- Description: {context_info['workspace']['description']}\n\n"
-    elif context_info.get("workspace_error"):
-        context_summary += "## Workspace Error\n"
-        context_summary += f"- Error: {context_info['workspace_error']}\n\n"
 
     # Add Git information
     if context_info["git_info"]:

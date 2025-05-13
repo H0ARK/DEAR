@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 import { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -19,6 +18,7 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 
 import { fetchRepositoriesFromGitHub } from "~/core/store/repository-store";
+import { LoadingOutlined } from "@ant-design/icons";
 
 const GITHUB_TOKEN_KEY = "github_token";
 
@@ -114,7 +114,7 @@ export function GitHubTokenDialog({
           <Button onClick={handleSaveToken} disabled={isLoading}>
             {isLoading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <LoadingOutlined className="mr-2 h-4 w-4 animate-spin" />
                 Saving...
               </>
             ) : (
