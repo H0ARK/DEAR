@@ -436,6 +436,30 @@ async def coder_node(
 ) -> Command[Literal["research_team"]]:
     """Coder node that do code analysis."""
     logger.info("Coder node is coding.")
+
+    # Check if we have workspace information and switch to the workspace branch
+    if state.get("context_info") and state["context_info"].get("workspace"):
+        try:
+            import os
+            workspace = state["context_info"]["workspace"]
+            logger.info(f"Ensuring coder is on workspace branch {workspace['branch_name']}")
+
+            # Import the workspace manager
+            from src.tools.workspace_manager import WorkspaceManager
+
+            # Create the workspace manager
+            workspace_manager = WorkspaceManager(os.getcwd())
+
+            # Switch to the workspace branch
+            workspace_manager.switch_to_workspace(workspace["id"])
+            logger.info(f"Successfully switched to workspace branch {workspace['branch_name']}")
+        except Exception as ws_error:
+            logger.error(f"Error switching to workspace branch: {ws_error}", exc_info=True)
+    elif state.get("context_info") and state["context_info"].get("current_branch"):
+        # If we're not using workspaces, log the current branch
+        current_branch = state["context_info"]["current_branch"]
+        logger.info(f"Using current branch: {current_branch}")
+
     return await _setup_and_execute_agent_step(
         state,
         config,

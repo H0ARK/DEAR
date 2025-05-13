@@ -5,7 +5,7 @@ import base64
 import json
 import logging
 import os
-from typing import List, cast
+from typing import List, Optional, cast
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
@@ -24,6 +24,7 @@ from src.server.chat_request import (
     GeneratePodcastRequest,
     GeneratePPTRequest,
     GenerateProseRequest,
+    RepositoryInfo,
     TTSRequest,
 )
 from src.server.mcp_request import MCPServerMetadataRequest, MCPServerMetadataResponse
@@ -65,6 +66,8 @@ async def chat_stream(request: ChatRequest):
             request.interrupt_feedback,
             request.mcp_settings,
             request.enable_background_investigation,
+            request.repository,
+            request.create_workspace,
         ),
         media_type="text/event-stream",
     )
@@ -78,7 +81,9 @@ async def _astream_workflow_generator(
     auto_accepted_plan: bool,
     interrupt_feedback: str,
     mcp_settings: dict,
-    enable_background_investigation,
+    enable_background_investigation: bool,
+    repository: Optional[RepositoryInfo] = None,
+    create_workspace: bool = False,
 ):
     input_ = {
         "messages": messages,
@@ -89,6 +94,13 @@ async def _astream_workflow_generator(
         "auto_accepted_plan": auto_accepted_plan,
         "enable_background_investigation": enable_background_investigation,
     }
+
+    # Add repository information if provided
+    if repository:
+        input_["repository"] = repository.model_dump()
+
+    # Add create_workspace flag
+    input_["create_workspace"] = create_workspace
     if not auto_accepted_plan and interrupt_feedback:
         resume_msg = f"[{interrupt_feedback}]"
         # add the last message to the resume message
@@ -102,6 +114,14 @@ async def _astream_workflow_generator(
             "max_plan_iterations": max_plan_iterations,
             "max_step_num": max_step_num,
             "mcp_settings": mcp_settings,
+            "create_workspace": create_workspace,
+            "configurable": {
+                "max_plan_iterations": max_plan_iterations,
+                "max_step_num": max_step_num,
+                "mcp_settings": mcp_settings,
+                "create_workspace": create_workspace,
+                "repo_path": repository.url.replace("https://github.com/", "") if repository else None,
+            }
         },
         stream_mode=["messages", "updates"],
         subgraphs=True,
@@ -123,7 +143,7 @@ async def _astream_workflow_generator(
                     },
                 )
             continue
-        message_chunk, message_metadata = cast(
+        message_chunk, _ = cast(
             tuple[AIMessageChunk, dict[str, any]], event_data
         )
         event_stream_message: dict[str, any] = {
