@@ -28,7 +28,12 @@ export default function HomePage() {
   return (
     <div className="flex h-screen w-screen justify-center overscroll-none">
       <header className="fixed top-0 left-0 flex h-12 w-full items-center justify-between px-4">
-        <Logo />
+        <div className="flex items-center gap-4">
+          <Logo />
+          <Suspense fallback={<div className="w-64 h-10 bg-muted rounded-2xl animate-pulse" />}>
+            <RepositorySelector />
+          </Suspense>
+        </div>
         <div className="flex items-center">
           <Tooltip title="Star DeerFlow on GitHub">
             <Button variant="ghost" size="icon" asChild>
