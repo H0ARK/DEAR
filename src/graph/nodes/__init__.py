@@ -1,28 +1,24 @@
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
 
-"""
-This file is maintained for backward compatibility.
-It re-exports all the node functions from the nodes package.
-For new code, please import directly from the appropriate module in the nodes package.
-"""
-
-from .nodes import (
-    # Planning nodes
+from .planning import (
     handoff_to_planner,
     background_investigation_node,
     coding_planner_node,
     human_feedback_plan_node,
-    
-    # Coordination nodes
+)
+
+from .coordination import (
     coordinator_node,
     reporter_node,
     coding_coordinator_node,
-    
-    # Research nodes
+)
+
+from .research import (
     research_team_node,
-    
-    # Coding nodes
+)
+
+from .coding import (
     coding_dispatcher_node,
     codegen_executor_node,
     initiate_codegen_node,
@@ -30,16 +26,19 @@ from .nodes import (
     task_orchestrator_node,
     codegen_success_node,
     codegen_failure_node,
-    
-    # Utility functions
+)
+
+from .utils import (
     check_repo_status,
-    
-    # Human interaction nodes
+)
+
+from .human_interaction import (
     initial_context_node,
     human_prd_review_node,
     human_initial_context_review_node,
-    
-    # Integration nodes
+)
+
+from .integration import (
     linear_integration_node,
 )
 
