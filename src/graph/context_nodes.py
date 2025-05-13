@@ -29,7 +29,7 @@ def context_gathering_node(
     research_return_to = "coding_coordinator"  # Default return node for research_team
 
     # Check if we were redirected from coding_coordinator for clarification research
-    is_clarification_research = state.get("clarification_prompt_from_coordinator") is not None
+    is_clarification_research = state.get("clarification_prompt_from_coordinator") is not None and state.get("clarification_prompt_from_coordinator") != ""
 
     # Setup research parameters based on whether this is a clarification research
     if is_clarification_research:

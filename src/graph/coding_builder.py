@@ -29,7 +29,12 @@ from .nodes import (
     researcher_node,
     human_prd_review_node, # NEW node for PRD review
     linear_integration_node, # NEWLY ADDED
-    human_initial_context_review_node, # NEW node for initial context review
+    human_initial_context_review_node, # Legacy node for initial context review
+    # New specialized nodes for initial context review
+    initial_context_query_generator_node,
+    initial_context_wait_for_feedback_node,
+    initial_context_feedback_handler_node,
+    initial_context_approval_router_node,
 )
 
 # Import GitHub nodes
@@ -60,7 +65,7 @@ def route_after_initial_context_review(state: State) -> Literal["coding_coordina
 # NEW conditional routing function for research_team
 def route_from_research_team(state: State) -> Literal["researcher", "task_orchestrator", "coding_coordinator", "coding_planner"]:
     """Determines the next step after the research_team node has processed a task or PRD research."""
-    
+
     # FIRST PRIORITY: Check if we should return to a specific node based on the flag from context_gatherer
     return_to_node = state.get("research_return_to")
     if return_to_node in ["coding_coordinator", "coding_planner"]:
@@ -69,7 +74,7 @@ def route_from_research_team(state: State) -> Literal["researcher", "task_orches
         if "research_return_to" in state:
             del state["research_return_to"]
         return return_to_node
-    
+
     # SECOND PRIORITY: If there's a current active step that needs execution, process it
     current_plan = state.get("current_plan")
     if current_plan and hasattr(current_plan, 'steps') and current_plan.steps:
@@ -83,7 +88,7 @@ def route_from_research_team(state: State) -> Literal["researcher", "task_orches
                     logger.info(f"route_from_research_team: Active step is PROCESSING, routing to task_orchestrator")
                     return "task_orchestrator"
                 break  # Only handle the first unexecuted step
-    
+
     # THIRD PRIORITY (default): If no other condition applies, always return to coding_coordinator
     # This simplifies the graph and ensures we don't have multiple possible destinations
     logger.info("route_from_research_team: No active research or specific return path, defaulting to coding_coordinator")
@@ -118,7 +123,7 @@ MAX_TRANSIENT_ERROR_ATTEMPTS = 3  # Allow a few retries for transient errors
 def should_continue_polling(state: State) -> Literal["continue", "success", "failure", "error"]:
     status = state.get("codegen_task_status", "none").lower()
     poll_attempts = state.get("codegen_poll_attempts", 0)
-    
+
     if status == "pending" or status == "running":
         return "continue"
     elif status == "success":
@@ -136,13 +141,22 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
 
     # Add nodes
     builder.add_node("initial_context", initial_context_node)
-    builder.add_node("human_initial_context_review", human_initial_context_review_node)  # ADD THIS NODE
+
+    # Legacy node (kept for backward compatibility)
+    builder.add_node("human_initial_context_review", human_initial_context_review_node)
+
+    # New specialized nodes for initial context review
+    builder.add_node("initial_context_query_generator", initial_context_query_generator_node)
+    builder.add_node("initial_context_wait_for_feedback", initial_context_wait_for_feedback_node)
+    builder.add_node("initial_context_feedback_handler", initial_context_feedback_handler_node)
+    builder.add_node("initial_context_approval_router", initial_context_approval_router_node)
+
     builder.add_node("coding_coordinator", coding_coordinator_node) # Central for PRD
     builder.add_node("human_prd_review", human_prd_review_node) # NEW for PRD feedback
     builder.add_node("context_gatherer", context_gathering_node) # For research
     builder.add_node("research_team", research_team_node) # For research
     builder.add_node("researcher", researcher_node) # ADDED
-    
+
     builder.add_node("coding_planner", coding_planner_node) # Takes approved PRD
     builder.add_node("human_feedback_plan", human_feedback_plan_node) # For TASK PLAN review
     builder.add_node("linear_integration", linear_integration_node) # NEWLY ADDED
@@ -152,27 +166,39 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
     builder.add_node("poll_codegen_status", poll_codegen_status_node)
     builder.add_node("codegen_success", codegen_success_node)
     builder.add_node("codegen_failure", codegen_failure_node)
-    
+
     builder.add_node("github_manager", github_manager_node)
     # builder.add_node("coder", coder_node) # Temporarily disconnected
 
     # --- Define Simplified Edges ---
-    # START FLOW: Initial context gathering → human review → coordinator 
+    # START FLOW: Initial context gathering → specialized nodes for review → coordinator
     builder.add_edge(START, "initial_context")
-    builder.add_edge("initial_context", "human_initial_context_review")  # Let human review initial context first
+
+    # Connect initial_context to the new specialized flow
+    builder.add_edge("initial_context", "initial_context_query_generator")
+
+    # Connect the specialized nodes in sequence
+    builder.add_edge("initial_context_query_generator", "initial_context_wait_for_feedback")
+    builder.add_edge("initial_context_wait_for_feedback", "initial_context_feedback_handler")
+    builder.add_edge("initial_context_feedback_handler", "initial_context_approval_router")
+
+    # Conditional routing from the approval router
     builder.add_conditional_edges(
-        "human_initial_context_review",
-        route_after_initial_context_review,
+        "initial_context_approval_router",
+        lambda state: "coding_coordinator" if state.get("initial_context_approved") else "initial_context_query_generator",
         {
             "coding_coordinator": "coding_coordinator",
-            "human_initial_context_review": "human_initial_context_review", # Loop back for more iterations
+            "initial_context_query_generator": "initial_context_query_generator", # Loop back for more iterations
         }
     )
+
+    # Keep the legacy node connected but route to the new flow
+    builder.add_edge("human_initial_context_review", "initial_context_query_generator")
 
     # PRD BUILDING LOOP: Coordinator manages the PRD loop
     def route_from_coordinator(state: State) -> Literal["human_prd_review", "context_gatherer", "coding_planner", "__end__"]:
         # This function will read state set by coding_coordinator_node
-        
+
         # Add detailed logging
         logger.info("route_from_coordinator: Determining next node...")
         logger.info(f"route_from_coordinator: simulated_input={state.get('simulated_input', False)}")
@@ -182,7 +208,7 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
         logger.info(f"route_from_coordinator: prd_approved={state.get('prd_approved', False)}")
         logger.info(f"route_from_coordinator: prd_next_step={state.get('prd_next_step', 'None')}")
         logger.info(f"route_from_coordinator: prd_review_feedback={state.get('prd_review_feedback', 'None')}")
-        
+
         # Direct bypass in non-interactive mode
         if state.get("simulated_input", False):
             # Check if we have a PRD document and approved status
@@ -198,39 +224,39 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
             else:
                 logger.info("Simulated input mode: No PRD document yet, routing to human_prd_review to generate one.")
                 return "human_prd_review"
-            
+
         # Check if coordinator specifically set the prd_next_step
         next_step = state.get("prd_next_step")
         if next_step:
             logger.info(f"Using explicit prd_next_step: {next_step}")
             return next_step
-            
+
         # Check for approval flag or feedback that indicates approval
-        if state.get("prd_approved") or state.get("prd_status") == "approved": 
+        if state.get("prd_approved") or state.get("prd_status") == "approved":
             logger.info("PRD is approved, routing to coding planner.")
             return "coding_planner"
-            
+
         # Check for approval in feedback
         prd_review_feedback = state.get("prd_review_feedback", "").lower()
         if "approve" in prd_review_feedback or "accept" in prd_review_feedback or "good" in prd_review_feedback:
             logger.info("PRD approval detected in feedback, routing to coding planner.")
             return "coding_planner"
-        
+
         # If we have a PRD document but no specific next step or approval
         if state.get("prd_document") and state.get("prd_status") == "awaiting_review":
             logger.info("PRD document exists and awaiting review, routing to human_prd_review.")
             return "human_prd_review"
-            
+
         # If we have no PRD document yet
         if not state.get("prd_document"):
             # The coordinator should have created one, but if not for some reason...
             logger.info("No PRD document yet, letting coordinator try again.")
             return "human_prd_review"
-            
+
         # Default to ending if we hit an unexpected state
         logger.info("No clear routing decision could be made, defaulting to __end__")
         return "__end__"
-        
+
     builder.add_conditional_edges(
         "coding_coordinator",
         route_from_coordinator, # Decision made by coordinator node's logic reflected in state
@@ -241,13 +267,13 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
             "__end__": END                            # Fallback
         }
     )
-    
+
     # FEEDBACK LOOP: PRD feedback always goes back to coordinator
-    builder.add_edge("human_prd_review", "coding_coordinator") 
-    
+    builder.add_edge("human_prd_review", "coding_coordinator")
+
     # RESEARCH FLOW: One-way path through the research process
     builder.add_edge("context_gatherer", "research_team")  # Context gatherer always goes to research team
-    
+
     # Research team can go to researcher for more research, or back to coordinator with results
     builder.add_conditional_edges(
         "research_team",
@@ -259,18 +285,18 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
             "task_orchestrator": "task_orchestrator"  # For direct task execution based on research
         }
     )
-    
+
     # Researcher always goes back to research team to evaluate results and decide next step
-    builder.add_edge("researcher", "research_team") 
+    builder.add_edge("researcher", "research_team")
 
     # PLANNING FLOW
-    builder.add_edge("coding_planner", "human_feedback_plan") 
+    builder.add_edge("coding_planner", "human_feedback_plan")
     builder.add_conditional_edges(
         "human_feedback_plan",
         should_revise_task_plan,
         {
-            "revise": "coding_planner", 
-            "accept": "linear_integration" 
+            "revise": "coding_planner",
+            "accept": "linear_integration"
         }
     )
     builder.add_edge("linear_integration", "task_orchestrator")
@@ -311,18 +337,22 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
             "error": "codegen_failure",
         },
     )
-    
+
     # Codegen outcomes feed back to the orchestrator
-    builder.add_edge("codegen_failure", "task_orchestrator") 
-    builder.add_edge("codegen_success", "github_manager") 
-    
+    builder.add_edge("codegen_failure", "task_orchestrator")
+    builder.add_edge("codegen_success", "github_manager")
+
     # GitHub manager feeds back to orchestrator on successful merge/completion of a task
-    builder.add_edge("github_manager", "task_orchestrator") 
+    builder.add_edge("github_manager", "task_orchestrator")
 
     if use_interrupts and checkpointer is not None:
         return builder.compile(
-            checkpointer=checkpointer, 
-            interrupt_before=["human_initial_context_review", "human_prd_review", "human_feedback_plan"]
+            checkpointer=checkpointer,
+            interrupt_before=[
+                "initial_context_wait_for_feedback",  # New specialized node for waiting for feedback
+                "human_prd_review",
+                "human_feedback_plan"
+            ]
         )
     else:
         return builder.compile(checkpointer=checkpointer)
@@ -335,7 +365,7 @@ def build_coding_graph():
 # Create a graph for interactive use (with interrupts)
 def build_interactive_coding_graph():
     """Build a coding graph with memory persistence for interactive use."""
-    memory = MemorySaver() 
+    memory = MemorySaver()
     return build_coding_graph_base(checkpointer=memory, use_interrupts=True)
 
 # Create a persisted graph with memory

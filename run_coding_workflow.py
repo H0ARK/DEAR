@@ -87,32 +87,34 @@ async def run_coding_workflow_async(
     # Define an on_interrupt handler for interrupts
     async def on_interrupt(position, interrupt_value, state):
         """Handle interrupts from the graph."""
-        if position[0] == "human_initial_context_review":
+        if position[0] == "initial_context_wait_for_feedback" or position[0] == "human_initial_context_review":
             print(f"\n=== INTERRUPT: Initial Context Review ===")
             print(interrupt_value.value)
             user_input = input("\nYour feedback: ")
-            return user_input
+            # Set the interrupt_value in the state for the feedback handler
+            return {"interrupt_value": user_input, "last_initial_context_feedback": user_input}
         elif position[0] == "human_prd_review":
             print(f"\n=== INTERRUPT: PRD Review ===")
             print(interrupt_value.value)
             user_input = input("\nYour feedback: ")
-            return user_input
+            return {"interrupt_value": user_input, "last_prd_feedback": user_input}
         elif position[0] == "human_feedback_plan":
             print(f"\n=== INTERRUPT: Plan Review ===")
             print(interrupt_value.value)
             user_input = input("\nYour feedback (accept or revise): ")
-            return user_input
+            return {"interrupt_value": user_input, "last_plan_feedback": user_input}
         else:
             print(f"\n=== UNEXPECTED INTERRUPT AT {position} ===")
             print(interrupt_value.value)
-            return "continue"
+            return {"interrupt_value": "continue"}
 
     # Get the list of interrupt nodes directly from the graph configuration
+    # Note: on_interrupt parameter is not supported in LangGraph 0.3.5
+    # We'll need to handle interrupts differently
     async for s in coding_graph.astream(
         input=initial_state,
         config=config,
-        stream_mode=stream_mode,
-        # on_interrupt parameter removed as it's not supported in LangGraph 0.3.5
+        stream_mode=stream_mode
     ):
         try:
             if isinstance(s, dict) and "messages" in s:
