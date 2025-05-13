@@ -5,5 +5,5 @@ from .task import LinearTask
 from .project import LinearProject
 from .service import LinearService
 
-__all__ = ["LinearTask", "LinearProject", "LinearService"]
+__all__ = ['LinearTask', 'LinearProject', 'LinearService']
 
