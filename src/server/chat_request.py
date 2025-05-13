@@ -24,6 +24,13 @@ class ChatMessage(BaseModel):
     )
 
 
+class RepositoryInfo(BaseModel):
+    owner: str = Field(..., description="Repository owner")
+    name: str = Field(..., description="Repository name")
+    fullName: str = Field(..., description="Full repository name (owner/name)")
+    url: str = Field(..., description="Repository URL")
+
+
 class ChatRequest(BaseModel):
     messages: Optional[List[ChatMessage]] = Field(
         [], description="History of messages between the user and the assistant"
@@ -49,6 +56,12 @@ class ChatRequest(BaseModel):
     )
     enable_background_investigation: Optional[bool] = Field(
         True, description="Whether to get background investigation before plan"
+    )
+    repository: Optional[RepositoryInfo] = Field(
+        None, description="GitHub repository information"
+    )
+    create_workspace: Optional[bool] = Field(
+        False, description="Whether to create a workspace for this session"
     )
 
 
