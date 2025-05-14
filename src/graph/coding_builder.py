@@ -51,6 +51,15 @@ logger = logging.getLogger(__name__)
 
 # --- Define edge routing functions ---
 
+def get_initial_context_routing_decision(state: State) -> str:
+    """Reads the routing decision made by initial_context_approval_router_node."""
+    decision = state.get("initial_context_routing_decision")
+    if not decision:
+        logger.error("Initial context routing decision not found in state! Defaulting to end.")
+        return END # Or handle error appropriately
+    logger.info(f"Routing based on initial_context_routing_decision: {decision}")
+    return decision
+
 def route_after_initial_context_review(state: State) -> Literal["coding_coordinator", "initial_context_query_generator"]:
     # The query generator is the start of the explicit loop
     if state.get("initial_context_approved"):
@@ -255,12 +264,11 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
 
     # Conditional routing from the approval router (initial context)
     builder.add_conditional_edges(
-        "initial_context_approval_router",
-        # Using the more specific route_after_initial_context_review which points to query_generator for loop
-        route_after_initial_context_review, 
-        {
+        "initial_context_approval_router",      # Source node name in the graph
+        get_initial_context_routing_decision, # Use the new explicit routing function
+        {                                       # Map: output string from routing_func -> target node name in graph
             "coding_coordinator": "coding_coordinator",
-            "initial_context_query_generator": "initial_context_query_generator",
+            "refine_initial_context_loop": "initial_context"
         }
     )
 

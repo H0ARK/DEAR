@@ -62,7 +62,7 @@ function mergeToolCallMessage(
     message.toolCalls = event.data.tool_calls.map((raw) => ({
       id: raw.id,
       name: raw.name,
-      args: raw.args,
+      args: raw.args ? (typeof raw.args === 'string' ? JSON.parse(raw.args) : raw.args) : {},
       result: undefined,
     }));
   }

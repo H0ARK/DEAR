@@ -114,26 +114,31 @@ def coding_coordinator_node(state: State) -> Command[Literal["human_prd_review",
     if not prd_document:
         logger.info("Generating PRD from user request...")
         
-        # Get the user's request from the messages
-        user_messages = [msg for msg in state.get("messages", []) if isinstance(msg, HumanMessage)]
-        if not user_messages:
-            logger.error("No user messages found in state. Cannot generate PRD.")
-            return Command(
-                update={
-                    "messages": state["messages"] + [AIMessage(content="Error: No user request found. Please provide a request.", name="coding_coordinator")]
-                },
-                goto="__end__"
-            )
+        # Get the approved initial request from the state
+        approved_request = state.get("approved_initial_request")
         
-        user_request = user_messages[-1].content
-        
+        if not approved_request:
+            logger.error("No approved initial request found in state. Cannot generate PRD.")
+            # Fallback to last user message if approved_initial_request is missing, or handle error
+            user_messages = [msg for msg in state.get("messages", []) if isinstance(msg, HumanMessage)]
+            if not user_messages:
+                logger.error("No user messages found in state. Cannot generate PRD.")
+                return Command(
+                    update={
+                        "messages": state["messages"] + [AIMessage(content="Error: No user request or approved context found. Please provide a request.", name="coding_coordinator")]
+                    },
+                    goto="__end__"
+                )
+            approved_request = user_messages[-1].content # Fallback, though ideally this shouldn't be hit
+            logger.warning("Falling back to last user message for PRD generation due to missing approved_initial_request.")
+
         # Check if we have research results to include
         research_results = state.get("research_results", "")
         
         # Prepare messages for the LLM to generate the PRD
         messages = [
             SystemMessage(content="You are an expert product manager. Your task is to create a detailed Product Requirements Document (PRD) based on a user's request."),
-            HumanMessage(content=f"User Request:\n\n{user_request}")
+            HumanMessage(content=f"User Request:\n\n{approved_request}") # Use the approved request
         ]
         
         if research_results:
@@ -196,9 +201,9 @@ def initial_context_node(state: State, config: RunnableConfig) -> Command[Litera
     
     # Prepare messages for the LLM to gather initial context
     messages = [
-        SystemMessage(content="You are an expert software architect. Your task is to gather initial context for a project based on a user's request."),
+        SystemMessage(content="You are an expert software architect. Your task is to understand a user's project request. Your goal is to start a conversation to clarify the project details."),
         HumanMessage(content=f"User Request:\n\n{user_request}"),
-        HumanMessage(content="Please provide initial context for this project, including:\n\n1. Project Overview\n2. Key Requirements\n3. Technical Considerations\n4. Potential Challenges\n5. Recommended Approach")
+        HumanMessage(content="Based on the user's request, what is your high-level understanding of the project? Please state this in 1-2 sentences. If the request is unclear, or if you need more specific details to form a basic understanding (e.g., for a game, what kind of game? For a website, what is its main purpose?), ask 1-2 key clarifying questions. Do NOT generate a full project overview, requirements list, or technical considerations at this stage. Your response should be a brief summary for confirmation OR a couple of questions.")
     ]
     
     try:
@@ -286,13 +291,20 @@ def initial_context_feedback_handler_node(state: State, config: RunnableConfig) 
         # last_initial_context_feedback is kept as a record, cleared by query_generator if new iteration starts
     }
 
-def initial_context_approval_router_node(state: State, config: RunnableConfig) -> Command[Literal["coding_coordinator", "initial_context_query_generator"]]:
-    """Routes based on whether the initial context was approved."""
+def initial_context_approval_router_node(state: State, config: RunnableConfig) -> dict: # Return dict for state update
+    """Routes based on whether the initial context was approved. Updates state with routing decision."""
     logger.info("Initial context approval router node executing...")
+    updated_state = state.copy()
+    routing_decision = ""
+
     if state.get("initial_context_approved"):
-        logger.info("Initial context approved. Proceeding to coding_coordinator.")
-        return Command(goto="coding_coordinator")
+        logger.info("Initial context approved. Storing approved summary and setting route to coding_coordinator.")
+        updated_state["approved_initial_request"] = state.get("initial_context_summary", "")
+        routing_decision = "coding_coordinator"
     else:
-        logger.info("Initial context not approved or needs more iterations. Looping back to query generator.")
-        return Command(goto="initial_context_query_generator")
+        logger.info("Initial context not approved. Setting route to refine_initial_context_loop.")
+        routing_decision = "refine_initial_context_loop"
+    
+    updated_state["initial_context_routing_decision"] = routing_decision
+    return updated_state
 

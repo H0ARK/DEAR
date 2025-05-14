@@ -1,0 +1,13 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "dependencies": {
+        "pnpm": "^10.11.0",
+      },
+    },
+  },
+  "packages": {
+    "pnpm": ["pnpm@10.11.0", "", { "bin": { "pnpm": "bin/pnpm.cjs", "pnpx": "bin/pnpx.cjs" } }, ""],
+  }
+}

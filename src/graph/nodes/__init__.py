@@ -14,7 +14,6 @@ from .planning import (
 from .coordination import (
     coordinator_node,
     coding_coordinator_node,
-    initial_context_node,
     initial_context_query_generator_node,
     initial_context_wait_for_feedback_node,
     initial_context_feedback_handler_node,

@@ -128,49 +128,60 @@ function MessageListItem({
     return researchIds.includes(messageId);
   }, [researchIds, messageId]);
   
+  // TODO: Replace this with a real setting from settings-store.ts
+  const showDetailedAgentActivity = true; // Default to true for now
+
   if (message) {
-    if (
-      message.role === "user" ||
-      message.agent === "coordinator" ||
-      message.agent === "planner" ||
-      message.agent === "podcast" ||
-      message.agent === "coordinator_thinking" ||
-      startOfResearch
-    ) {
-      let content: ReactNode;
-      if (message.agent === "planner") {
-        content = (
-          <div className="w-full px-4">
-            <PlanCard
-              message={message}
-              waitForFeedback={waitForFeedback}
-              interruptMessage={interruptMessage}
-              onFeedback={onFeedback}
-              onSendMessage={onSendMessage}
-            />
-          </div>
-        );
-      } else if (message.agent === "podcast") {
-        content = (
-          <div className="w-full px-4">
-            <PodcastCard message={message} />
-          </div>
-        );
-      } else if (startOfResearch) {
-        content = (
-          <div className="w-full px-4">
-            <ResearchCard
-              researchId={message.id}
-              onToggleResearch={onToggleResearch}
-            />
-          </div>
-        );
-      } else {
-        // Check if this is a thinking process message
-        const isThinkingProcess = typeof message.content === 'string' && 
-          message.content.startsWith('🤔 THINKING PROCESS 🤔');
-        
-        if (isThinkingProcess && message.content) {
+    let content: ReactNode = null;
+
+    if (message.agent === "planner") {
+      content = (
+        <div className="w-full px-4">
+          <PlanCard
+            message={message}
+            waitForFeedback={waitForFeedback}
+            interruptMessage={interruptMessage}
+            onFeedback={onFeedback}
+            onSendMessage={onSendMessage}
+          />
+        </div>
+      );
+    } else if (message.agent === "podcast") {
+      content = (
+        <div className="w-full px-4">
+          <PodcastCard message={message} />
+        </div>
+      );
+    } else if (startOfResearch) {
+      content = (
+        <div className="w-full px-4">
+          <ResearchCard
+            researchId={message.id}
+            onToggleResearch={onToggleResearch}
+          />
+        </div>
+      );
+    } else if (message.role === "user") {
+      content = (
+        <div
+          className={cn(
+            "flex w-full px-4 justify-end",
+            className,
+          )}
+        >
+          <MessageBubble message={message}>
+            <div className="flex w-full flex-col">
+              <Markdown animated={message.isStreaming}>{message?.content}</Markdown>
+            </div>
+          </MessageBubble>
+        </div>
+      );
+    } else if (message.role === "assistant") {
+      const isThinkingProcess = typeof message.content === 'string' &&
+        message.content.startsWith('🤔 THINKING PROCESS 🤔');
+
+      if (showDetailedAgentActivity) {
+        if (isThinkingProcess) {
           content = (
             <div className="flex w-full px-4">
               <div className="w-full">
@@ -179,43 +190,53 @@ function MessageListItem({
             </div>
           );
         } else {
-          content = message.content ? (
-            <div
-              className={cn(
-                "flex w-full px-4",
-                message.role === "user" && "justify-end",
-                className,
-              )}
-            >
-              <MessageBubble message={message}>
-                <div className="flex w-full flex-col">
-                  <Markdown animated={message.isStreaming}>{message?.content}</Markdown>
-                </div>
-              </MessageBubble>
+          // Use new AgentRoleBubble for other assistant messages when detailed view is on
+          content = (
+            <div className="flex w-full px-4">
+              <div className="w-full">
+                <AgentRoleBubble agentName={message.agent ?? "assistant"} content={message.content} />
+              </div>
             </div>
-          ) : null;
+          );
         }
-      }
-      if (content) {
-        return (
-          <motion.li
-            className="mt-10"
-            key={messageId}
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            style={{ transition: "all 0.2s ease-out" }}
-            transition={{
-              duration: 0.2,
-              ease: "easeOut",
-            }}
+      } else {
+        // Fallback to simple MessageBubble if detailed view is off
+        content = (
+          <div
+            className={cn(
+              "flex w-full px-4",
+              className,
+            )}
           >
-            {content}
-          </motion.li>
+            <MessageBubble message={message}>
+              <div className="flex w-full flex-col">
+                <Markdown animated={message.isStreaming}>{message?.content}</Markdown>
+              </div>
+            </MessageBubble>
+          </div>
         );
       }
     }
-    return null;
+
+    if (content) {
+      return (
+        <motion.li
+          className="mt-10"
+          key={messageId}
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{ transition: "all 0.2s ease-out" }}
+          transition={{
+            duration: 0.2,
+            ease: "easeOut",
+          }}
+        >
+          {content}
+        </motion.li>
+      );
+    }
   }
+  return null;
 }
 
 function MessageBubble({
@@ -479,6 +500,62 @@ function PodcastCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function AgentRoleBubble({ agentName, content }: { agentName: string, content: string }) {
+  const [isCollapsed, setIsCollapsed] = useState(true);
+
+  // Get a preview of the thinking content (first few lines)
+  const previewContent = useMemo(() => {
+    if (!content) return "";
+    const lines = content.split('\n');
+    const previewLines = lines.slice(0, 3);
+    return previewLines.join('\n') + (lines.length > 3 ? '...' : '');
+  }, [content]);
+
+  const capitalizedAgentName = agentName.charAt(0).toUpperCase() + agentName.slice(1);
+
+  return (
+    <div className="bg-sky-900/20 border border-sky-700/30 rounded-md text-sky-200 p-3">
+      <div
+        className="text-xs text-sky-300 mb-2 font-medium flex justify-between cursor-pointer"
+        onClick={() => setIsCollapsed(!isCollapsed)}
+      >
+        <span>Agent Activity: {capitalizedAgentName}</span>
+        <span>{isCollapsed ? "⬇️ Show details" : "⬆️ Hide details"}</span>
+      </div>
+
+      {isCollapsed ? (
+        <div className="text-sm opacity-80">
+          <Markdown>{previewContent}</Markdown>
+          {content && content.split('\n').length > 3 && (
+            <button
+              className="text-sm text-sky-400 hover:text-sky-300 mt-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsCollapsed(false);
+              }}
+            >
+              Show more...
+            </button>
+          )}
+        </div>
+      ) : (
+        <>
+          <Markdown animated>{content}</Markdown>
+          <button
+            className="text-sm text-sky-400 hover:text-sky-300 mt-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsCollapsed(true);
+            }}
+          >
+            Show less
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 

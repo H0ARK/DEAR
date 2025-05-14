@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 
 import { chatStream, generatePodcast } from "../api";
+import type { ToolCall } from "../api/types";
 import type { Message } from "../messages";
 import { mergeMessage } from "../messages";
 import { parseJSON } from "../utils";
@@ -46,14 +47,14 @@ export const useStore = create<{
   openResearchId: null,
 
   appendMessage(message: Message) {
-    console.log("Appending new message:", message.id, message.agent, message.content.substring(0, 20) + "...");
+    console.log("Appending new message:", message.id, message.agent, message.content?.substring(0, 50) + "...");
     set((state) => ({
       messageIds: [...state.messageIds, message.id],
       messages: new Map(state.messages).set(message.id, message),
     }));
   },
   updateMessage(message: Message) {
-    console.log("Updating message:", message.id, message.agent, message.content.substring(0, 20) + "...");
+    console.log("Updating message:", message.id, message.agent, message.content?.substring(0, 50) + "...");
     set((state) => ({
       messages: new Map(state.messages).set(message.id, message),
     }));
@@ -122,53 +123,91 @@ export async function sendMessage(
       console.log("Received event:", type, data.id || "no event-specific id", data);
 
       let messageToUpdate: Message | undefined;
+      const eventSpecificId = data.id; // ID from the event data itself
 
-      if (type === "message_chunk" || type === "tool_calls" || type === "tool_call_chunks" || type === "interrupt") {
-        const currentEventMessageId = data.id;
-
-        if (currentEventMessageId) {
-          if (!existsMessage(currentEventMessageId)) {
-            console.log(`New message event (${type}), creating message ID: ${currentEventMessageId}`);
-            const newMessage: Message = {
-              id: currentEventMessageId,
-              threadId: data.thread_id || THREAD_ID,
-              agent: data.agent || "assistant",
-              role: data.role || "assistant",
-              content: "",
-              contentChunks: [],
-              isStreaming: true,
-              toolCalls: (type === "tool_calls" && data.tool_calls) ? data.tool_calls.map((tc: any) => ({ ...tc, argsChunks: [] })) : [],
-              // options: type === "interrupt" ? data.options : undefined, // This was interruptFeedback, ensure data.options exists
-            };
-            if (type === "interrupt" && data.options) {
-              newMessage.options = data.options;
+      if (activeStreamingMessageId && (type === "message_chunk" || type === "tool_call_chunks")) {
+        console.log(`Active stream ${activeStreamingMessageId} exists. Appending chunk (${type}) to it.`);
+        messageToUpdate = getMessage(activeStreamingMessageId);
+        if (!messageToUpdate) { 
+            console.error(`Consistency error: activeStreamingMessageId ${activeStreamingMessageId} has no message! Resetting active stream.`);
+            activeStreamingMessageId = null; 
+            // Fall through to allow new stream creation based on eventSpecificId or localId
+        }
+      }
+      
+      if (!messageToUpdate) { // If not already set by active stream logic
+        if (type === "message_chunk" || type === "tool_calls" || type === "tool_call_chunks" || type === "interrupt") {
+          if (eventSpecificId) {
+            if (!existsMessage(eventSpecificId)) {
+              console.log(`No/failed active stream. New message event (${type}) with ID ${eventSpecificId}. Creating.`);
+              const newMessage: Message = {
+                id: eventSpecificId,
+                threadId: data.thread_id || THREAD_ID,
+                agent: data.agent || "assistant",
+                role: data.role || "assistant",
+                content: "",
+                contentChunks: [],
+                isStreaming: true,
+                toolCalls: (type === "tool_calls" && data.tool_calls) ? data.tool_calls.map((tc: ToolCall) => ({
+                  id: tc.id,
+                  name: tc.name,
+                  args: tc.args ? (typeof tc.args === 'string' ? JSON.parse(tc.args) : tc.args) : {},
+                  argsChunks: []
+                })) : [],
+              };
+              if (type === "interrupt" && data.options) {
+                newMessage.options = data.options;
+              }
+              appendMessage(newMessage);
+              messageToUpdate = newMessage;
+              activeStreamingMessageId = eventSpecificId; 
+            } else {
+              console.log(`No/failed active stream. Event (${type}) with existing ID ${eventSpecificId}. Updating.`);
+              messageToUpdate = getMessage(eventSpecificId);
+              activeStreamingMessageId = eventSpecificId; 
             }
-            appendMessage(newMessage);
-            messageToUpdate = newMessage;
-            activeStreamingMessageId = currentEventMessageId;
           } else {
-            messageToUpdate = getMessage(currentEventMessageId);
-            activeStreamingMessageId = currentEventMessageId;
+            if (type === "message_chunk" || type === "tool_calls" || type === "interrupt") {
+              const localId = nanoid();
+              console.log(`No/failed active stream. New initial event (${type}) without ID. Creating local ID ${localId}.`);
+              const newMessage: Message = {
+                id: localId,
+                threadId: data.thread_id || THREAD_ID,
+                agent: data.agent || "assistant",
+                role: data.role || "assistant",
+                content: "",
+                contentChunks: [],
+                isStreaming: true,
+                toolCalls: (type === "tool_calls" && data.tool_calls) ? data.tool_calls.map((tc: ToolCall) => ({
+                  id: tc.id,
+                  name: tc.name,
+                  args: tc.args ? (typeof tc.args === 'string' ? JSON.parse(tc.args) : tc.args) : {},
+                  argsChunks: []
+                })) : [],
+              };
+              if (type === "interrupt" && data.options) {
+                newMessage.options = data.options;
+              }
+              appendMessage(newMessage);
+              messageToUpdate = newMessage;
+              activeStreamingMessageId = localId; 
+            } else {
+              console.warn("No/failed active stream and event without ID couldn't start a new message:", event);
+              continue;
+            }
           }
-        } else if (activeStreamingMessageId && (type === "message_chunk" || type === "tool_call_chunks")) {
-          console.log(`Chunk event (${type}) without ID, using active ID: ${activeStreamingMessageId}`);
-          messageToUpdate = getMessage(activeStreamingMessageId);
+        } else if (type === "tool_call_result") {
+          messageToUpdate = findMessageByToolCallId(data.tool_call_id);
+          if (messageToUpdate) {
+              activeStreamingMessageId = messageToUpdate.id; 
+          } else {
+              console.warn("No message found for tool_call_result:", event);
+              continue;
+          }
         } else {
-          console.warn("Received event that couldn't be mapped to a message:", event);
+          console.warn("Unhandled event type in stream:", type);
           continue;
         }
-
-      } else if (type === "tool_call_result") {
-        messageToUpdate = findMessageByToolCallId(data.tool_call_id);
-        if (messageToUpdate) {
-            activeStreamingMessageId = messageToUpdate.id;
-        } else {
-            console.warn("No message found for tool_call_result:", event);
-            continue;
-        }
-      } else {
-        console.warn("Unhandled event type in stream:", type);
-        continue;
       }
 
       if (messageToUpdate) {
@@ -176,7 +215,7 @@ export async function sendMessage(
         updateMessage(updatedMessage);
 
         if (event.data.finish_reason || (type === "interrupt")) {
-          console.log(`Stream finished for message ${messageToUpdate.id}, reason: ${event.data.finish_reason || 'interrupt'}`);
+          console.log(`Stream finished for message ${messageToUpdate.id}, reason: ${event.data.finish_reason ?? 'interrupt'}`);
           activeStreamingMessageId = null;
         }
       }

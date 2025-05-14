@@ -9,7 +9,7 @@ export interface ToolCall {
   type: "tool_call";
   id: string;
   name: string;
-  args: Record<string, unknown>;
+  args: string | Record<string, unknown>;
 }
 
 export interface ToolCallChunk {

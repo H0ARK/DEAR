@@ -18,11 +18,11 @@ def context_gatherer_node(state: State) -> Command[Literal["coding_planner", "co
     # This message could be more dynamic based on what context is needed.
     context_query_message = (
         "I need to gather some additional context before proceeding. "
-        "Please provide any relevant information about your request, such as:\\n\\n"
+        "Please provide any relevant information about your request, such as:\n\n"
         "1. Project overview and goals\\n"
         "2. Key features or requirements\\n"
         "3. Any existing code or technical constraints\\n"
-        "4. Specific deliverables expected\\n\\n"
+        "4. Specific deliverables expected\n\n"
         "The more details you provide, the better I can assist you."
     )
     
