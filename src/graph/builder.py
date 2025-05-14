@@ -56,9 +56,7 @@ def _build_base_graph():
         # Route based on goto field from planner_node
         lambda x: x.get("goto", "__end__"),
          {
-            "reporter": "reporter",
             "research_team": "research_team",
-            "human_feedback_plan": "reporter", # DIAGNOSTIC: Route to reporter instead of END
             "__end__": END, # Handle case where planner decides to end
         }
     )

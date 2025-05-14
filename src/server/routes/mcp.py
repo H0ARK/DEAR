@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, HTTPException
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from src.server.chat_request import (
+from src.server.mcp_models import (
     MCPServerMetadataRequest,
     MCPServerMetadataResponse,
     MCPExecuteRequest,

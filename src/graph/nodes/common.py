@@ -10,8 +10,7 @@ from typing import Annotated, Literal, Dict, Any, Optional, List
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.types import Command, interrupt
-from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.types import Command
 from langchain.prompts import PromptTemplate
 
 from src.agents.agents import coder_agent, research_agent, create_agent

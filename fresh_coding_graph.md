@@ -9,11 +9,9 @@ graph TD;
 	initial_context(initial_context)
 	human_initial_context_review(human_initial_context_review<hr/><small><em>__interrupt = before</em></small>)
 	coding_coordinator(coding_coordinator)
-	human_prd_review(human_prd_review<hr/><small><em>__interrupt = before</em></small>)
 	context_gatherer(context_gatherer)
 	research_team(research_team)
 	coding_planner(coding_planner)
-	human_feedback_plan(human_feedback_plan<hr/><small><em>__interrupt = before</em></small>)
 	linear_integration(linear_integration)
 	task_orchestrator(task_orchestrator)
 	initiate_codegen(initiate_codegen)
@@ -25,16 +23,13 @@ graph TD;
 	__start__ --> initial_context;
 	codegen_failure --> task_orchestrator;
 	codegen_success --> github_manager;
-	coding_planner --> human_feedback_plan;
 	context_gatherer --> research_team;
 	github_manager --> task_orchestrator;
 	human_initial_context_review --> coding_coordinator;
-	human_prd_review --> coding_coordinator;
 	initial_context --> human_initial_context_review;
 	initiate_codegen --> poll_codegen_status;
 	linear_integration --> task_orchestrator;
 	researcher___end__ --> research_team;
-	coding_coordinator -.-> human_prd_review;
 	coding_coordinator -.-> context_gatherer;
 	coding_coordinator -.-> coding_planner;
 	coding_coordinator -.-> __end__;
@@ -42,8 +37,6 @@ graph TD;
 	research_team -.-> coding_coordinator;
 	research_team -.-> coding_planner;
 	research_team -.-> task_orchestrator;
-	human_feedback_plan -. &nbsp;revise&nbsp; .-> coding_planner;
-	human_feedback_plan -. &nbsp;accept&nbsp; .-> linear_integration;
 	task_orchestrator -.-> initiate_codegen;
 	task_orchestrator -.-> coding_planner;
 	task_orchestrator -.-> __end__;
@@ -52,21 +45,16 @@ graph TD;
 	poll_codegen_status -. &nbsp;error&nbsp; .-> codegen_failure;
 	initial_context -.-> coding_coordinator;
 	human_initial_context_review -.-> coding_coordinator;
-	coding_coordinator -.-> human_prd_review;
 	coding_coordinator -.-> context_gatherer;
 	coding_coordinator -.-> coding_planner;
 	coding_coordinator -.-> __end__;
-	human_prd_review -.-> coding_coordinator;
 	context_gatherer -.-> research_team;
 	research_team -.-> researcher___start__;
 	research_team -.-> task_orchestrator;
 	research_team -.-> coding_coordinator;
 	research_team -.-> coding_planner;
 	researcher___end__ -.-> research_team;
-	coding_planner -.-> human_feedback_plan;
 	coding_planner -.-> __end__;
-	human_feedback_plan -.-> coding_planner;
-	human_feedback_plan -.-> task_orchestrator;
 	linear_integration -.-> task_orchestrator;
 	github_manager -.-> task_orchestrator;
 	github_manager -.-> coding_planner;

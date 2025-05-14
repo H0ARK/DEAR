@@ -24,10 +24,9 @@ from .nodes import (
     codegen_failure_node,
     coding_planner_node,
     human_feedback_plan_node, # This is for TASK PLAN review
-    # coder_node, # Temporarily disconnected
     research_team_node,
     researcher_node,
-    human_prd_review_node, # NEW node for PRD review
+    human_prd_review_node, # NEW for PRD feedback
     linear_integration_node, # NEWLY ADDED
     human_initial_context_review_node, # Legacy node for initial context review
     # New specialized nodes for initial context review
@@ -35,6 +34,8 @@ from .nodes import (
     initial_context_wait_for_feedback_node,
     initial_context_feedback_handler_node,
     initial_context_approval_router_node,
+    context_gatherer_node, # Ensure this is imported
+    # human_plan_review_node, # Stays removed
 )
 
 # Import GitHub nodes
@@ -43,9 +44,6 @@ from .github_nodes import (
     # github_planning_node, # Already removed
 )
 
-# Import context gathering node
-from .context_nodes import context_gathering_node
-
 # Import the new utility
 from .visualizer import save_graph_visualization, get_graph_mermaid_syntax
 
@@ -53,14 +51,38 @@ logger = logging.getLogger(__name__)
 
 # --- Define edge routing functions ---
 
-def route_after_initial_context_review(state: State) -> Literal["coding_coordinator", "human_initial_context_review"]:
+def route_after_initial_context_review(state: State) -> Literal["coding_coordinator", "initial_context_query_generator"]:
+    # The query generator is the start of the explicit loop
     if state.get("initial_context_approved"):
         logger.info("Initial context approved. Proceeding to coding_coordinator.")
         return "coding_coordinator"
     else:
-        # This implies awaiting_initial_context_input is true and a query has been set by the node.
-        logger.info("Initial context not yet approved or awaiting further input. Looping back to human_initial_context_review.")
-        return "human_initial_context_review"
+        logger.info("Initial context not yet approved or awaiting further input. Looping back to initial_context_query_generator.")
+        return "initial_context_query_generator"
+
+def route_after_prd_review(state: State) -> Literal["coding_planner", "coding_coordinator", "human_prd_review"]:
+    """Routes after human_prd_review_node based on approval and awaiting input flags."""
+    if state.get("awaiting_prd_review_input"):
+        logger.info("Awaiting PRD review input from user. Looping back to human_prd_review_node.")
+        return "human_prd_review"
+    elif state.get("prd_approved"):
+        logger.info("PRD approved. Proceeding to coding_planner.")
+        return "coding_planner"
+    else:
+        logger.info("PRD not approved (revisions requested). Returning to coding_coordinator.")
+        return "coding_coordinator"
+
+def route_after_plan_review(state: State) -> Literal["linear_integration", "coding_planner", "human_feedback_plan"]:
+    """Routes after human_feedback_plan_node based on approval and awaiting input flags."""
+    if state.get("awaiting_plan_review_input"):
+        logger.info("Awaiting plan review input from user. Looping back to human_feedback_plan_node.")
+        return "human_feedback_plan"
+    elif state.get("plan_approved"):
+        logger.info("Plan approved. Proceeding to linear_integration.") # Or task_orchestrator if that is the actual next step
+        return "linear_integration"
+    else:
+        logger.info("Plan not approved (revisions requested). Returning to coding_planner.")
+        return "coding_planner"
 
 # NEW conditional routing function for research_team
 def route_from_research_team(state: State) -> Literal["researcher", "task_orchestrator", "coding_coordinator", "coding_planner"]:
@@ -97,44 +119,93 @@ def route_from_research_team(state: State) -> Literal["researcher", "task_orches
 # Placeholder for PRD review logic (similar to above but for PRD)
 # The human_prd_review_node will set 'prd_review_feedback' in state.
 # coding_coordinator_node will use 'prd_review_feedback'
-def route_after_prd_review(state: State) -> Literal["request_research", "iterate_prd", "prd_approved_to_planner"]:
-    # This logic is effectively part of coding_coordinator_node's decision making
-    # For now, the connections will be:
-    # human_prd_review_node -> coding_coordinator
-    # coding_coordinator then decides where to go next based on state.
-    # This function itself isn't directly used for a conditional_edge from human_prd_review_node itself,
-    # but coding_coordinator_node will implement this routing.
-    feedback = state.get("prd_review_feedback", "").lower() # human_prd_review_node sets this
-    if "research" in feedback:
-        return "request_research"
-    if "approved" in feedback or "approve" in feedback : # Simplified approval
-        return "prd_approved_to_planner"
-    return "iterate_prd" # Default to iterating on PRD with new feedback
+def route_from_coordinator(state: State) -> Literal["context_gatherer", "coding_planner", "__end__"]:
+    # This function will read state set by coding_coordinator_node
 
-# For task plan revision routing
-def should_revise_task_plan(state: State) -> Literal["revise", "accept"]:
-    feedback = state.get("task_plan_feedback", "").lower()
-    if "revise" in feedback or "change" in feedback or "modify" in feedback:
-        return "revise"
-    return "accept" # Default to accepting
+    # Add detailed logging
+    logger.info("route_from_coordinator: Determining next node...")
+    logger.info(f"route_from_coordinator: simulated_input={state.get('simulated_input', False)}")
+    logger.info(f"route_from_coordinator: wait_for_input={state.get('wait_for_input', True)}")
+    logger.info(f"route_from_coordinator: prd_document exists={bool(state.get('prd_document', ''))}")
+    logger.info(f"route_from_coordinator: prd_status={state.get('prd_status', 'None')}")
+    logger.info(f"route_from_coordinator: prd_approved={state.get('prd_approved', False)}")
+    logger.info(f"route_from_coordinator: prd_next_step={state.get('prd_next_step', 'None')}")
+    logger.info(f"route_from_coordinator: prd_review_feedback={state.get('prd_review_feedback', 'None')}")
 
-# For codegen status polling routing
-MAX_TRANSIENT_ERROR_ATTEMPTS = 3  # Allow a few retries for transient errors
+    # Direct bypass in non-interactive mode
+    if state.get("simulated_input", False):
+        # Check if we have a PRD document and approved status
+        if state.get("prd_document") and state.get("prd_status") == "approved":
+            logger.info("Simulated input mode: PRD already approved, proceeding to coding planner.")
+            return "coding_planner"
+        # If we have a PRD document but not explicit approval yet
+        elif state.get("prd_document"):
+            logger.info("Simulated input mode: PRD exists but needs review approval.")
+            return "context_gatherer"
+        # In non-interactive mode with no PRD, the coding_coordinator should have created one
+        # If we reach here, something might have gone wrong but we try to proceed
+        else:
+            logger.info("Simulated input mode: No PRD document yet, routing to context_gatherer to generate one.")
+            return "context_gatherer"
+
+    # Check if coordinator specifically set the prd_next_step
+    next_step = state.get("prd_next_step")
+    if next_step:
+        logger.info(f"Using explicit prd_next_step: {next_step}")
+        return next_step
+
+    # Check for approval flag or feedback that indicates approval
+    if state.get("prd_approved") or state.get("prd_status") == "approved":
+        logger.info("PRD is approved, routing to coding planner.")
+        return "coding_planner"
+
+    # Check for approval in feedback
+    prd_review_feedback = state.get("prd_review_feedback", "").lower()
+    if "approve" in prd_review_feedback or "accept" in prd_review_feedback or "good" in prd_review_feedback:
+        logger.info("PRD approval detected in feedback, routing to coding planner.")
+        return "coding_planner"
+
+    # If we have a PRD document but no specific next step or approval
+    if state.get("prd_document") and state.get("prd_status") == "awaiting_review":
+        logger.info("PRD document exists and awaiting review, routing to context_gatherer.")
+        return "context_gatherer"
+
+    # If we have no PRD document yet
+    if not state.get("prd_document"):
+        # The coordinator should have created one, but if not for some reason...
+        logger.info("No PRD document yet, letting coordinator try again.")
+        return "context_gatherer"
+
+    # Default to ending if we hit an unexpected state
+    logger.info("No clear routing decision could be made, defaulting to __end__")
+    return "__end__"
+
+MAX_CODEGEN_POLL_ATTEMPTS = 10 # Define a max attempts for polling
+
 def should_continue_polling(state: State) -> Literal["continue", "success", "failure", "error"]:
-    status = state.get("codegen_task_status", "none").lower()
+    """Determines if codegen polling should continue, or if it's success/failure."""
+    codegen_status = state.get("codegen_status")
     poll_attempts = state.get("codegen_poll_attempts", 0)
 
-    if status == "pending" or status == "running":
-        return "continue"
-    elif status == "success":
-        return "success"
-    elif status == "failure_coding" or status == "failure_review" or status == "timeout":
-        return "failure"
-    elif status == "none" or status == "error_during_poll":
-        if poll_attempts < MAX_TRANSIENT_ERROR_ATTEMPTS: return "continue"
-        else: return "error"
-    return "error"
+    logger.info(f"should_continue_polling: status='{codegen_status}', attempts={poll_attempts}")
 
+    if codegen_status == "completed":
+        logger.info("Polling: codegen_status is 'completed'. Routing to success.")
+        return "success"
+    elif codegen_status == "failed": # Assuming poll_codegen_status_node might set this
+        logger.info("Polling: codegen_status is 'failed'. Routing to failure.")
+        return "failure"
+    
+    if poll_attempts >= MAX_CODEGEN_POLL_ATTEMPTS:
+        logger.warning(f"Polling: Max poll attempts ({MAX_CODEGEN_POLL_ATTEMPTS}) reached. Routing to failure.")
+        return "failure" # Or "error" depending on desired handling
+
+    # If not completed/failed and attempts not exceeded, continue polling
+    logger.info("Polling: Status not terminal and attempts not exceeded. Routing to continue.")
+    # Important: The poll_codegen_status_node should increment this
+    # For safety, we could increment it here if the node doesn't, but it's better if the node does.
+    # state["codegen_poll_attempts"] = poll_attempts + 1 # This might not persist correctly if not returned by the node
+    return "continue"
 
 def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed to base, memory passed in
     builder = StateGraph(State)
@@ -153,12 +224,12 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
 
     builder.add_node("coding_coordinator", coding_coordinator_node) # Central for PRD
     builder.add_node("human_prd_review", human_prd_review_node) # NEW for PRD feedback
-    builder.add_node("context_gatherer", context_gathering_node) # For research
+    builder.add_node("context_gatherer", context_gatherer_node) # Ensure this is imported
     builder.add_node("research_team", research_team_node) # For research
     builder.add_node("researcher", researcher_node) # ADDED
 
     builder.add_node("coding_planner", coding_planner_node) # Takes approved PRD
-    builder.add_node("human_feedback_plan", human_feedback_plan_node) # For TASK PLAN review
+    builder.add_node("human_feedback_plan", human_feedback_plan_node) # NEW for TASK PLAN review
     builder.add_node("linear_integration", linear_integration_node) # NEWLY ADDED
 
     builder.add_node("task_orchestrator", task_orchestrator_node) # Renamed from prepare_codegen_task
@@ -182,126 +253,85 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
     builder.add_edge("initial_context_wait_for_feedback", "initial_context_feedback_handler")
     builder.add_edge("initial_context_feedback_handler", "initial_context_approval_router")
 
-    # Conditional routing from the approval router
+    # Conditional routing from the approval router (initial context)
     builder.add_conditional_edges(
         "initial_context_approval_router",
-        lambda state: "coding_coordinator" if state.get("initial_context_approved") else "initial_context_query_generator",
+        # Using the more specific route_after_initial_context_review which points to query_generator for loop
+        route_after_initial_context_review, 
         {
             "coding_coordinator": "coding_coordinator",
-            "initial_context_query_generator": "initial_context_query_generator", # Loop back for more iterations
+            "initial_context_query_generator": "initial_context_query_generator",
         }
     )
 
     # Keep the legacy node connected but route to the new flow
-    builder.add_edge("human_initial_context_review", "initial_context_query_generator")
+    # builder.add_edge("human_initial_context_review", "initial_context_query_generator") # Or remove if fully deprecated
+    # For now, let's assume human_initial_context_review_node (if called) would also use the new routing.
+    # However, this node is in planning.py and might be different from the one in coordination.py
+    # To be safe, if it's used, it should route via its own logic or be removed from active graph if superseded.
+    # Given the new initial_context_* nodes, the direct human_initial_context_review might be deprecated from START.
+    # The one in planning.py is handled by refactor, if it is still wired up, it would need its own conditional edge or removal.
 
-    # PRD BUILDING LOOP: Coordinator manages the PRD loop
-    def route_from_coordinator(state: State) -> Literal["human_prd_review", "context_gatherer", "coding_planner", "__end__"]:
-        # This function will read state set by coding_coordinator_node
 
-        # Add detailed logging
-        logger.info("route_from_coordinator: Determining next node...")
-        logger.info(f"route_from_coordinator: simulated_input={state.get('simulated_input', False)}")
-        logger.info(f"route_from_coordinator: wait_for_input={state.get('wait_for_input', True)}")
-        logger.info(f"route_from_coordinator: prd_document exists={bool(state.get('prd_document', ''))}")
-        logger.info(f"route_from_coordinator: prd_status={state.get('prd_status', 'None')}")
-        logger.info(f"route_from_coordinator: prd_approved={state.get('prd_approved', False)}")
-        logger.info(f"route_from_coordinator: prd_next_step={state.get('prd_next_step', 'None')}")
-        logger.info(f"route_from_coordinator: prd_review_feedback={state.get('prd_review_feedback', 'None')}")
-
-        # Direct bypass in non-interactive mode
-        if state.get("simulated_input", False):
-            # Check if we have a PRD document and approved status
-            if state.get("prd_document") and state.get("prd_status") == "approved":
-                logger.info("Simulated input mode: PRD already approved, proceeding to coding planner.")
-                return "coding_planner"
-            # If we have a PRD document but not explicit approval yet
-            elif state.get("prd_document"):
-                logger.info("Simulated input mode: PRD exists but needs review approval.")
-                return "human_prd_review"
-            # In non-interactive mode with no PRD, the coding_coordinator should have created one
-            # If we reach here, something might have gone wrong but we try to proceed
-            else:
-                logger.info("Simulated input mode: No PRD document yet, routing to human_prd_review to generate one.")
-                return "human_prd_review"
-
-        # Check if coordinator specifically set the prd_next_step
-        next_step = state.get("prd_next_step")
-        if next_step:
-            logger.info(f"Using explicit prd_next_step: {next_step}")
-            return next_step
-
-        # Check for approval flag or feedback that indicates approval
-        if state.get("prd_approved") or state.get("prd_status") == "approved":
-            logger.info("PRD is approved, routing to coding planner.")
-            return "coding_planner"
-
-        # Check for approval in feedback
-        prd_review_feedback = state.get("prd_review_feedback", "").lower()
-        if "approve" in prd_review_feedback or "accept" in prd_review_feedback or "good" in prd_review_feedback:
-            logger.info("PRD approval detected in feedback, routing to coding planner.")
-            return "coding_planner"
-
-        # If we have a PRD document but no specific next step or approval
-        if state.get("prd_document") and state.get("prd_status") == "awaiting_review":
-            logger.info("PRD document exists and awaiting review, routing to human_prd_review.")
-            return "human_prd_review"
-
-        # If we have no PRD document yet
-        if not state.get("prd_document"):
-            # The coordinator should have created one, but if not for some reason...
-            logger.info("No PRD document yet, letting coordinator try again.")
-            return "human_prd_review"
-
-        # Default to ending if we hit an unexpected state
-        logger.info("No clear routing decision could be made, defaulting to __end__")
-        return "__end__"
-
+    # PRD BUILDING LOOP: 
+    # coding_coordinator decides if PRD needs creation/update, then goes to human_prd_review
     builder.add_conditional_edges(
         "coding_coordinator",
-        route_from_coordinator, # Decision made by coordinator node's logic reflected in state
+        route_from_coordinator, # This existing router decides if PRD is needed, or research, or plan
         {
-            "human_prd_review": "human_prd_review",   # For PRD feedback
-            "context_gatherer": "context_gatherer",   # For research
-            "coding_planner": "coding_planner",       # Exit PRD loop to planning
-            "__end__": END                            # Fallback
+            "context_gatherer": "context_gatherer",
+            "coding_planner": "coding_planner", # Directly to planner if PRD already approved
+            "__end__": END,
+        }
+    )
+    # After human reviews PRD, route based on their feedback
+    builder.add_conditional_edges(
+        "human_prd_review", # Added source node
+        route_after_prd_review,
+        {
+            "coding_planner": "coding_planner",
+            "coding_coordinator": "coding_coordinator", # Loop back to coordinator for revisions
+            "human_prd_review": "human_prd_review" # Added loop back to self if still awaiting input
         }
     )
 
-    # FEEDBACK LOOP: PRD feedback always goes back to coordinator
-    builder.add_edge("human_prd_review", "coding_coordinator")
-
-    # RESEARCH FLOW: One-way path through the research process
-    builder.add_edge("context_gatherer", "research_team")  # Context gatherer always goes to research team
-
-    # Research team can go to researcher for more research, or back to coordinator with results
+    # Context gathering (research) can be triggered by coding_coordinator or other nodes
+    builder.add_edge("context_gatherer", "research_team")
     builder.add_conditional_edges(
         "research_team",
-        route_from_research_team,  # Use our simplified routing function
+        route_from_research_team,
         {
-            "researcher": "researcher",               # For performing research
-            "coding_coordinator": "coding_coordinator", # Return research to coordinator
-            "coding_planner": "coding_planner",       # For direct return to planner
-            "task_orchestrator": "task_orchestrator"  # For direct task execution based on research
+            "researcher": "researcher",
+            "task_orchestrator": "task_orchestrator",
+            "coding_coordinator": "coding_coordinator",
+            "coding_planner": "coding_planner" # Added this path
         }
     )
+    builder.add_edge("researcher", "research_team") # Researcher reports back to team
 
-    # Researcher always goes back to research team to evaluate results and decide next step
-    builder.add_edge("researcher", "research_team")
-
-    # PLANNING FLOW
+    # TASK PLANNING LOOP: 
+    # coding_planner (after PRD approved) creates a plan, then goes to human_feedback_plan
     builder.add_edge("coding_planner", "human_feedback_plan")
+
+    # After human reviews the plan, route based on their feedback
     builder.add_conditional_edges(
-        "human_feedback_plan",
-        should_revise_task_plan,
+        "human_feedback_plan", # Added source node
+        route_after_plan_review,
         {
-            "revise": "coding_planner",
-            "accept": "linear_integration"
+            "linear_integration": "linear_integration", # Plan approved
+            "coding_planner": "coding_planner",         # Revisions requested
+            "human_feedback_plan": "human_feedback_plan" # Added loop back to self if still awaiting input
         }
     )
+    
+    # After linear_integration, if successful, effectively moves to task execution or completion.
+    # For now, let's assume linear_integration is a step before orchestrator or END.
+    # The example from human_feedback_plan used to go to 'linear_integration'.
+    # What comes after linear_integration? Assuming task_orchestrator for now.
     builder.add_edge("linear_integration", "task_orchestrator")
 
-    # TASK ORCHESTRATION AND CODEGEN LOOP
+
+    # TASK EXECUTION LOOP (Task Orchestrator and Codegen)
     def route_from_orchestrator(state: State) -> Literal["initiate_codegen", "coding_planner", "__end__"]:
         # This logic will be implemented in task_orchestrator_node Python function.
         # It will check the task queue, dependencies, and outcomes.
@@ -329,7 +359,7 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
     builder.add_edge("initiate_codegen", "poll_codegen_status")
     builder.add_conditional_edges(
         "poll_codegen_status",
-        should_continue_polling,
+        should_continue_polling, # type: ignore
         {
             "continue": "poll_codegen_status",
             "success": "codegen_success",
@@ -350,8 +380,6 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
             checkpointer=checkpointer,
             interrupt_before=[
                 "initial_context_wait_for_feedback",  # New specialized node for waiting for feedback
-                "human_prd_review",
-                "human_feedback_plan"
             ]
         )
     else:

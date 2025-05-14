@@ -27,7 +27,7 @@ interface GenericEvent<T extends string, D extends object> {
   data: {
     id: string;
     thread_id: string;
-    agent: "coordinator" | "planner" | "researcher" | "coder" | "reporter";
+    agent: "coordinator" | "planner" | "researcher" | "coder" | "reporter" | "ChatGoogleGenerativeAI" | "ChatXAI";
     role: "user" | "assistant" | "tool";
     finish_reason?: "stop" | "tool_calls" | "interrupt";
   } & D;
@@ -38,6 +38,7 @@ export interface MessageChunkEvent
     "message_chunk",
     {
       content?: string;
+      finish_reason?: "stop" | "tool_calls" | "interrupt";
     }
   > {}
 

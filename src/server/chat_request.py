@@ -1,7 +1,7 @@
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
 
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
 
 from pydantic import BaseModel, Field
 
@@ -65,6 +65,12 @@ class ChatRequest(BaseModel):
     )
     create_workspace: Optional[bool] = Field(
         False, description="Whether to create a workspace for this session"
+    )
+    user_feedback_payload: Optional[Dict[str, Any]] = Field(
+        None, description="Payload containing user feedback for various review stages (e.g., initial context, PRD, plan)."
+    )
+    locale: Optional[str] = Field(
+        "en-US", description="Locale string for localization, e.g., en-US, zh-CN."
     )
 
 

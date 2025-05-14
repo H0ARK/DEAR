@@ -17,64 +17,75 @@ class State(MessagesState):
     locale: str = "en-US"
     observations: Annotated[list[str], operator.add] = []
     plan_iterations: Annotated[int, operator.add] = 0
-    current_plan: Optional[Plan | str] = None  # Changed from Annotated with None to simple Optional
-    final_report: str = ""
-    auto_accepted_plan: Annotated[bool, operator.or_] = False  # Use Annotated with operator.or_ to handle multiple updates
-    enable_background_investigation: Annotated[bool, operator.or_] = True  # Use Annotated with operator.or_ to handle multiple updates
-    background_investigation_results: Optional[str] = None  # Changed back to Optional[str] without Annotated
-    create_workspace: Annotated[bool, operator.or_] = False  # Use Annotated with operator.or_ to handle multiple updates
-    repo_path: Optional[str] = None  # Changed back to Optional[str] without Annotated
+    current_plan: Annotated[Optional[Plan | str], None] = None # Explicitly LastValue
+    final_report: Annotated[str, None] = "" # Explicitly LastValue
+    auto_accepted_plan: Annotated[bool, operator.or_] = False
+    enable_background_investigation: Annotated[bool, operator.or_] = True
+    background_investigation_results: Annotated[Optional[str], None] = None # Explicitly LastValue
+    create_workspace: Annotated[bool, operator.or_] = False
+    repo_path: Annotated[Optional[str], None] = None # Explicitly LastValue
 
     # --- GitHub specific state from previous iterations ---
-    feature_branch_name: Optional[str] = None  # Changed back to Optional[str] without Annotated
-    github_task_branches: Optional[Dict[int, str]] = None  # Maps step number to task branch name
-    github_action: Optional[str] = None  # e.g., "create_feature_branch", "create_task_branch"
-    feature_branch_description: Optional[str] = None  # Changed back to Optional[str] without Annotated
+    feature_branch_name: Annotated[Optional[str], None] = None # Explicitly LastValue
+    github_task_branches: Annotated[Optional[Dict[int, str]], None] = None  # Explicitly LastValue
+    github_action: Annotated[Optional[str], None] = None  # Explicitly LastValue
+    feature_branch_description: Annotated[Optional[str], None] = None # Explicitly LastValue
 
     # --- Codegen specific state ---
-    codegen_task_description: Optional[str] = None  # Changed back to Optional[str] without Annotated
-    codegen_task_id: Optional[str] = None  # Changed back to Optional[str] without Annotated
-    codegen_task_status: Optional[str] = None # PENDING, RUNNING, SUCCESS, FAILURE_CODING, FAILURE_REVIEW, TIMEOUT
-    codegen_task_result: Optional[Any] = None # Could be code, error message, etc.
-    codegen_poll_attempts: int = 0  # Simple integer, not Annotated
+    codegen_task_description: Annotated[Optional[str], None] = None # Explicitly LastValue
+    codegen_task_id: Annotated[Optional[str], None] = None # Explicitly LastValue
+    codegen_task_status: Annotated[Optional[str], None] = None # Explicitly LastValue
+    codegen_task_result: Annotated[Optional[Any], None] = None # Explicitly LastValue
+    codegen_poll_attempts: Annotated[int, operator.add] = 0
 
     # --- Interrupt feedback ---
-    interrupt_feedback: Optional[str] = None  # Changed back to Optional[str] without Annotated
-    clarification_prompt_from_coordinator: Optional[str] = None  # Changed back to Optional[str] without Annotated
+    interrupt_feedback: Annotated[Optional[str], None] = None # Explicitly LastValue
+    clarification_prompt_from_coordinator: Annotated[Optional[str], None] = None # Explicitly LastValue
 
     # --- Initial Context ---
-    initial_repo_check_done: Annotated[bool, operator.or_] = False  # Use Annotated with operator.or_ to handle multiple updates
-    repo_is_empty: Annotated[bool, operator.or_] = True # Default to true, initial_context_node will update
-    linear_task_exists: Annotated[bool, operator.or_] = False # Default to false
-    initial_context_summary: Optional[str] = None  # Changed back to Optional[str] without Annotated
+    initial_repo_check_done: Annotated[bool, operator.or_] = False
+    repo_is_empty: Annotated[bool, operator.or_] = True
+    linear_task_exists: Annotated[bool, operator.or_] = False
+    initial_context_summary: Annotated[Optional[str], None] = None # Explicitly LastValue
     # --- New fields for iterative initial context gathering ---
-    pending_initial_context_query: Optional[str] = None  # Changed back to Optional[str] without Annotated
-    awaiting_initial_context_input: Annotated[bool, operator.or_] = False  # Use Annotated with operator.or_ to handle multiple updates
-    initial_context_approved: Annotated[bool, operator.or_] = False  # Use Annotated with operator.or_ to handle multiple updates
-    initial_context_iterations: Annotated[int, operator.add] = 0  # Keep Annotated with operator.add
-    last_initial_context_feedback: Optional[str] = None  # Changed back to Optional[str] without Annotated
+    pending_initial_context_query: Annotated[Optional[str], None] = None # Explicitly LastValue
+    awaiting_initial_context_input: Annotated[bool, operator.or_] = False # Should allow updates if somehow set multiple times
+    initial_context_approved: Annotated[bool, operator.or_] = False
+    initial_context_iterations: Annotated[int, operator.add] = 0
+    last_initial_context_feedback: Annotated[Optional[str], None] = None # Explicitly LastValue
     # --- End new fields ---
 
     # --- Fields from PROJECT_PLAN.md Section II ---
-    existing_project_summary: Optional[Dict] = None  # Changed back to Optional[Dict] without Annotated
-    prd_document: Optional[str] = ""  # Changed back to Optional[str] without Annotated
-    prd_review_feedback: Optional[str] = None  # Changed back to Optional[str] without Annotated
-    prd_approved: Annotated[bool, operator.or_] = False  # Use Annotated with operator.or_ to handle multiple updates
-    prd_next_step: Optional[str] = None  # Expected values: "human_prd_review", "context_gatherer", "coding_planner"
-    research_results: Optional[Any] = None  # Changed back to Optional[Any] without Annotated
-    tasks_definition: Optional[List[Dict]] = None  # Detailed plan from coding_planner
+    existing_project_summary: Annotated[Optional[Dict], None] = None  # Explicitly LastValue
+    prd_document: Annotated[Optional[str], None] = None # Explicitly LastValue
+    prd_review_feedback: Annotated[Optional[str], None] = None # Explicitly LastValue
+    prd_approved: Annotated[bool, operator.or_] = False # This was bool, changing to Annotated for safety
+    prd_next_step: Annotated[Optional[str], None] = None # Explicitly LastValue
+    research_results: Annotated[Optional[Any], None] = None # Explicitly LastValue
+    tasks_definition: Annotated[Optional[List[Dict]], None] = None  # Explicitly LastValue
     # tasks_definition Task Dict: {id, description, dependencies: List[id], branch_name, status_in_plan, execute_alone, etc.}
-    tasks_live: Optional[List[Dict]] = None  # Tasks after Linear sync, with Linear IDs
+    tasks_live: Annotated[Optional[List[Dict]], None] = None  # Explicitly LastValue
     # tasks_live Task Dict: {linear_id, github_branch, status_live, ...}
-    current_task_id: Optional[str] = None  # ID of the task currently being processed
-    current_task_details: Optional[Dict] = None  # Details of the current_task_id for codegen
-    orchestrator_next_step: Optional[str] = None  # Expected values: "dispatch_task_for_codegen", "forward_failure_to_planner", "all_tasks_complete"
-    failed_task_details: Optional[Dict] = None  # Info for planner if orchestrator escalates a failure
+    current_task_id: Annotated[Optional[str], None] = None # Explicitly LastValue
+    current_task_details: Annotated[Optional[Dict], None] = None # Explicitly LastValue
+    orchestrator_next_step: Annotated[Optional[str], None] = None # Explicitly LastValue
+    failed_task_details: Annotated[Optional[Dict], None] = None # Explicitly LastValue
 
     # --- Task Completion/Failure Feedback for Orchestrator ---
-    processed_task_id: Optional[str] = None
-    processed_task_outcome: Optional[Literal["SUCCESS", "FAILURE"]] = None
-    processed_task_failure_details: Optional[Dict] = None
+    processed_task_id: Annotated[Optional[str], None] = None # Explicitly LastValue
+    processed_task_outcome: Annotated[Optional[Literal["SUCCESS", "FAILURE"]], None] = None # Explicitly LastValue
+    processed_task_failure_details: Annotated[Optional[Dict], None] = None # Explicitly LastValue
+
+    # --- New fields for iterative PRD review ---
+    pending_prd_review_query: Annotated[Optional[str], None] = None
+    prd_review_iterations: Annotated[int, operator.add] = 0
+    last_prd_feedback: Annotated[Optional[str], None] = None
+
+    # --- New fields for iterative Plan review ---
+    pending_plan_review_query: Annotated[Optional[str], None] = None
+    plan_approved: Annotated[bool, operator.or_] = False # This was bool, changing to Annotated for safety
+    plan_review_iterations: Annotated[int, operator.add] = 0
+    last_plan_feedback: Annotated[Optional[str], None] = None
 
 
 def get_current_human_message(state: State) -> Optional[BaseMessage]:

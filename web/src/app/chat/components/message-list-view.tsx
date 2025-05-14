@@ -189,7 +189,7 @@ function MessageListItem({
             >
               <MessageBubble message={message}>
                 <div className="flex w-full flex-col">
-                  <Markdown animated>{message?.content}</Markdown>
+                  <Markdown animated={message.isStreaming}>{message?.content}</Markdown>
                 </div>
               </MessageBubble>
             </div>

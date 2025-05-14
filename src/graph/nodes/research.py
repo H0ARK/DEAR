@@ -4,6 +4,7 @@
 from typing import Literal
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
+from langchain_core.runnables import RunnableConfig
 
 from .common import *
 
@@ -143,4 +144,29 @@ def reporter_node(state: State):
     logger.info(f"reporter response: {response_content}")
 
     return {"final_report": response_content}
+
+
+async def researcher_node(state: State, config: RunnableConfig) -> Command[Literal["research_team"]]:
+    """Placeholder for the researcher node. Performs a research step."""
+    logger.info("Researcher node executing (placeholder)...")
+    
+    # In a real implementation, this node would:
+    # 1. Get the current research step from current_plan.steps
+    # 2. Execute the research (e.g., call an LLM with search tools)
+    # 3. Store the result in the step's execution_res
+    # 4. Update observations or other relevant state fields
+    
+    # For now, just log and return to research_team
+    # Simulate finding some observation
+    current_observations = state.get("observations", [])
+    new_observation = "Placeholder research observation from researcher_node."
+    updated_observations = current_observations + [new_observation]
+    
+    # Assume the research step (if any was being tracked) is now done
+    # and the result is in updated_observations or directly in a step object (not modeled here yet)
+    
+    return Command(
+        update={"observations": updated_observations, "messages": state.get("messages", []) + [AIMessage(content="[Placeholder] Researcher finished a step.", name="researcher")]},
+        goto="research_team"
+    )
 

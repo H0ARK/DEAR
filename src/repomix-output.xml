@@ -63,6 +63,16 @@ crawler/
   jina_client.py
   readability_extractor.py
 graph/
+  nodes/
+    __init__.py
+    coding.py
+    common.py
+    coordination.py
+    human_interaction.py
+    integration.py
+    planning.py
+    research.py
+    utils.py
   __init__.py
   builder.py
   coding_builder.py
@@ -103,6 +113,7 @@ prompts/
   __init__.py
   coder.md
   coding_coordinator.md
+  coding_planner_task_list.md
   coding_planner.md
   coordinator.md
   planner_model.py
@@ -121,12 +132,23 @@ prose/
     prose_zap_node.py
     state.py
 server/
+  routes/
+    __init__.py
+    chat.py
+    mcp.py
+    tts.py
   __init__.py
   app.py
   chat_request.py
+  mcp_models.py
   mcp_request.py
   mcp_utils.py
 tools/
+  linear/
+    __init__.py
+    project.py
+    service.py
+    task.py
   tavily_search/
     __init__.py
     tavily_search_api_wrapper.py
@@ -387,6 +409,742 @@ def extract_article(self, html: str) -> Article
 article = simple_json_from_html_string(html, use_readability=True)
 </file>
 
+<file path="graph/nodes/__init__.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+# Re-export all functions from the modules for backward compatibility
+⋮----
+context_gatherer_node, # Ensure this is imported in coding_builder.py
+</file>
+
+<file path="graph/nodes/coding.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+def coding_dispatcher_node(state: State) -> Command[Literal["codegen_executor", "task_orchestrator", "__end__"]]
+⋮----
+"""Dispatcher node that routes to the appropriate coding node."""
+⋮----
+# Check if we have a task to execute
+current_task = state.get("current_task")
+⋮----
+# Check if the task is a coding task
+task_type = current_task.get("type", "")
+⋮----
+def codegen_executor_node(state: State) -> State
+⋮----
+"""Node that executes code generation tasks."""
+⋮----
+# Get the current task
+⋮----
+# Update the state to indicate we're initiating code generation
+⋮----
+def initiate_codegen_node(state: State, config: RunnableConfig) -> State
+⋮----
+"""Node that initiates the code generation process."""
+⋮----
+# Get the task description
+task_description = current_task.get("description", "")
+⋮----
+# Simulate initiating code generation
+⋮----
+# Update the state to indicate we're processing code generation
+⋮----
+def poll_codegen_status_node(state: State, config: RunnableConfig) -> State
+⋮----
+"""Node that polls the status of the code generation process."""
+⋮----
+# Get the codegen ID
+codegen_id = state.get("codegen_id")
+⋮----
+# Increment poll attempts
+poll_attempts = state.get("codegen_poll_attempts", 0) + 1
+⋮----
+# Simulate polling status
+# In a real implementation, this would make an API call to check the status
+⋮----
+# For demonstration purposes, randomly determine if the code generation is complete
+is_complete = random.choice([True, False])
+⋮----
+# Keep the status as processing
+⋮----
+def codegen_success_node(state: State) -> State
+⋮----
+"""Node that handles successful code generation."""
+⋮----
+# Get the codegen result
+codegen_result = state.get("codegen_result", {})
+⋮----
+# Update the state with the success message
+⋮----
+def codegen_failure_node(state: State) -> State
+⋮----
+"""Node that handles failed code generation."""
+⋮----
+# Update the state with the failure message
+⋮----
+def check_repo_status(repo_path: str | None = None) -> tuple[bool, str]
+⋮----
+"""Check if the repository is in a clean state."""
+# In a real implementation, this would check the git status
+# For demonstration purposes, always return success
+⋮----
+def task_orchestrator_node(state: State) -> State
+⋮----
+"""Node that orchestrates the execution of tasks."""
+⋮----
+# Get the tasks definition
+tasks_definition = state.get("tasks_definition", [])
+⋮----
+# Get the current task index
+current_task_index = state.get("current_task_index", 0)
+⋮----
+# Check if we've completed all tasks
+⋮----
+current_task = tasks_definition[current_task_index]
+⋮----
+# Update the state with the current task
+⋮----
+# Determine the task type based on the task description
+# In a real implementation, this would be more sophisticated
+task_description = current_task.get("description", "").lower()
+⋮----
+# Increment the task index for the next iteration
+</file>
+
+<file path="graph/nodes/common.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+logger = logging.getLogger(__name__)
+⋮----
+# Import any global constants or variables needed across modules
+</file>
+
+<file path="graph/nodes/coordination.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+"""Coordinator node that communicate with customers."""
+⋮----
+messages = apply_prompt_template("coordinator", state)
+response = (
+⋮----
+.bind_tools([handoff_to_planner])  # Restore tool binding
+⋮----
+goto = "__end__"
+locale = state.get("locale", "en-US")  # Default locale if not specified
+⋮----
+# Restore original logic for checking tool calls
+⋮----
+goto = "context_gatherer"
+⋮----
+# if the search_before_planning is True, add the web search tool to the planner agent
+goto = "background_investigator"
+⋮----
+locale = tool_locale
+⋮----
+# The original didn't add the coordinator's direct response to messages here,
+# as it relied on the tool call for the next step.
+# If there was a direct response without a tool call, it was usually just an end to the conversation.
+⋮----
+def coding_coordinator_node(state: State) -> Command[Literal["human_prd_review", "context_gatherer", "coding_planner", "__end__"]]
+⋮----
+"""Coordinator node for coding tasks that generates PRD and handles feedback."""
+⋮----
+# Check if we have PRD feedback to process
+prd_review_feedback = state.get("prd_review_feedback")
+prd_document = state.get("prd_document")
+⋮----
+# If we have feedback but it's not an approval, we need to update the PRD
+⋮----
+# Prepare messages for the LLM to update the PRD
+messages = [
+⋮----
+# Get the LLM response
+llm = get_llm_by_type(AGENT_LLM_MAP.get("coding_coordinator", ""))
+response = llm.invoke(messages)
+updated_prd = response.content
+⋮----
+# Update the state with the new PRD
+updated_state = state.copy()
+⋮----
+updated_state["prd_review_feedback"] = None  # Clear the feedback
+⋮----
+# Send the updated PRD back for review
+⋮----
+error_message = f"I encountered an error trying to update the PRD based on your feedback. Error: {e}."
+⋮----
+# If we have an approved PRD, proceed to planning
+⋮----
+# If we don't have a PRD yet, generate one
+⋮----
+# Get the user's request from the messages
+user_messages = [msg for msg in state.get("messages", []) if isinstance(msg, HumanMessage)]
+⋮----
+user_request = user_messages[-1].content
+⋮----
+# Check if we have research results to include
+research_results = state.get("research_results", "")
+⋮----
+# Prepare messages for the LLM to generate the PRD
+⋮----
+prd_document = response.content
+⋮----
+# Send the PRD for review
+⋮----
+error_message = f"I encountered an error trying to generate a PRD from your request. Error: {e}."
+⋮----
+# If we reach here, something unexpected happened
+⋮----
+def initial_context_node(state: State, config: RunnableConfig) -> Command[Literal["coding_coordinator"]]
+⋮----
+"""Node that gathers initial context for the project."""
+⋮----
+# Get the user's request from the messages
+⋮----
+# Prepare messages for the LLM to gather initial context
+⋮----
+# Get the LLM response
+llm = get_llm_by_type(AGENT_LLM_MAP.get("initial_context", ""))
+⋮----
+initial_context = response.content
+⋮----
+# Update the state with the initial context
+⋮----
+updated_state["initial_context_summary"] = initial_context[:100] + "..." # Truncate to 100 chars for summary
+⋮----
+# Proceed to the coding coordinator
+⋮----
+error_message = f"I encountered an error trying to gather initial context for your request. Error: {e}."
+⋮----
+def initial_context_query_generator_node(state: State, config: RunnableConfig) -> State
+⋮----
+"""Generates the query/summary for human review of initial context."""
+⋮----
+# This node would typically:
+# 1. Get initial_context_summary or generate one if not present.
+# 2. Formulate a question for the user.
+initial_context_summary = state.get("initial_context_summary", "No initial context gathered yet.")
+query = f"I've gathered the following initial context about your project:\\n\\n{initial_context_summary}\\n\\nPlease review this information. Is this understanding correct and complete? If not, what should be changed or added?"
+⋮----
+iterations = state.get("initial_context_iterations", 0) + 1
+⋮----
+"awaiting_initial_context_input": True, # Signal that we need human input
+"initial_context_approved": False, # Reset approval status for new iteration
+⋮----
+def initial_context_wait_for_feedback_node(state: State, config: RunnableConfig) -> State
+⋮----
+"""(Placeholder) Waits for human feedback on the initial context.
+    In a real interruptible system, this node might not do much if the interrupt
+    is handled by the graph executor. If using explicit 'human_tool', this would invoke it.
+    For our current explicit state-driven loop, this node might just ensure state is set for UI.
+    """
+⋮----
+# The actual waiting/interrupt is managed by how the graph is run and how UI interacts.
+# This node ensures the state `awaiting_initial_context_input` is True if not already.
+⋮----
+return {} # No state change if already awaiting
+⋮----
+def initial_context_feedback_handler_node(state: State, config: RunnableConfig) -> State
+⋮----
+"""Handles the feedback received from the user about the initial context."""
+⋮----
+user_feedback = state.get("last_initial_context_feedback") # This should be populated by the streaming endpoint
+⋮----
+updated_messages = state.get("messages", [])
+⋮----
+updated_messages = updated_messages + [HumanMessage(content=user_feedback, name="user_initial_context_feedback")]
+⋮----
+# Logic to determine if feedback implies approval
+approved = False
+⋮----
+approved = True
+⋮----
+"awaiting_initial_context_input": False, # No longer awaiting input for this cycle
+"pending_initial_context_query": None, # Clear the last query
+⋮----
+# last_initial_context_feedback is kept as a record, cleared by query_generator if new iteration starts
+⋮----
+def initial_context_approval_router_node(state: State, config: RunnableConfig) -> Command[Literal["coding_coordinator", "initial_context_query_generator"]]
+⋮----
+"""Routes based on whether the initial context was approved."""
+</file>
+
+<file path="graph/nodes/human_interaction.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+def context_gatherer_node(state: State) -> Command[Literal["coding_planner", "coding_coordinator"]]
+⋮----
+"""Node that gathers context from the user."""
+⋮----
+# Check if we have a specific node to route to
+route_to = state.get("context_gatherer_route_to")
+⋮----
+# Create the interrupt message (or query for context)
+# This message could be more dynamic based on what context is needed.
+context_query_message = (
+⋮----
+updated_state = state.copy()
+# Add the query to messages so user sees it.
+# This assumes this node is part of an interruptible flow or a flow that signals UI for input.
+⋮----
+force_interactive = state.get("force_interactive", True) # Check if interactive mode is forced
+⋮----
+# In a true interrupt system, this would pause and wait for external input.
+# For this example, we'll assume the input is passed in `last_initial_context_feedback`
+# or a similar field if this node is being repurposed.
+# If this node is meant to use LangGraph's interrupt():
+# context_input = interrupt(context_query_message) # This would be the actual interrupt call.
+⋮----
+# For now, let's assume context comes from 'last_initial_context_feedback' if available,
+# otherwise, it indicates an issue or a need for actual interruption.
+context_input = state.get("last_initial_context_feedback") # Or a more generic "user_input_for_context_gatherer"
+⋮----
+# This is where we'd typically interrupt or signal UI.
+# For now, we log and proceed to default, which might need adjustment
+# depending on how this node is used in the new state-driven HITL.
+⋮----
+# If no input, and we must proceed, what should be the default? Forcing a decision:
+# Defaulting to coding_coordinator if route_to is not specified, assuming it's a safer general next step.
+# This part needs careful review based on the graph's intent for this node.
+final_goto = "coding_coordinator" if route_to != "coding_planner" else "coding_planner" # Corrected
+⋮----
+# Ensure additional_context is None or empty if no input
+⋮----
+# Clear the feedback field after processing
+⋮----
+else: # Non-interactive / simulated input
+⋮----
+simulated_context = "This is simulated additional context for the project provided in non-interactive mode."
+⋮----
+# updated_state["simulated_input"] = True # This flag might be set elsewhere if globally non-interactive
+⋮----
+# Determine where to go next based on the route_to value or a default
+# Default to coding_planner if route_to is not coding_coordinator
+final_goto = "coding_coordinator" if route_to == "coding_coordinator" else "coding_planner" # Corrected
+</file>
+
+<file path="graph/nodes/integration.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+def linear_integration_node(state: State, config: RunnableConfig) -> Command[Literal["task_orchestrator"]]
+⋮----
+"""Node that integrates with Linear to create tasks."""
+⋮----
+# Get the tasks definition
+tasks_definition = state.get("tasks_definition", [])
+⋮----
+# Check if Linear integration is enabled
+configurable = Configuration.from_runnable_config(config)
+linear_enabled = configurable.linear_enabled
+⋮----
+# Get the Linear service
+⋮----
+linear_service = LinearService()
+⋮----
+goto="task_orchestrator"  # Continue to task orchestrator even if Linear integration fails
+⋮----
+# Create a project in Linear
+project_name = state.get("project_name", "Untitled Project")
+⋮----
+project = linear_service.create_project(project_name)
+⋮----
+project = None
+⋮----
+# Create tasks in Linear
+linear_tasks = []
+⋮----
+# Create the task in Linear
+linear_task = linear_service.create_task(
+⋮----
+# Store the Linear task ID in the task definition
+⋮----
+# Continue with the next task even if this one fails
+⋮----
+# Update the state with the Linear integration results
+⋮----
+# Add a message about the Linear integration
+⋮----
+message = f"Successfully created Linear project '{project_name}' with {len(linear_tasks)} tasks."
+⋮----
+message = f"Successfully created {len(linear_tasks)} Linear tasks."
+⋮----
+message = "Failed to create Linear project or tasks."
+⋮----
+# Proceed to task orchestrator
+</file>
+
+<file path="graph/nodes/planning.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+# === New Global Prompt for Coding Planner ===
+CODING_PLANNER_TASK_LIST_PROMPT = """You are an expert software architect. Your goal is to create a detailed, actionable task plan based on the provided Product Requirements Document (PRD).
+⋮----
+"""Handoff to planner agent to do plan."""
+# This tool is not returning anything: we're just using it
+# as a way for LLM to signal that it needs to hand off to planner agent
+⋮----
+"""Planner node that generates a detailed task breakdown from the PRD."""
+⋮----
+plan_iterations = state.get("plan_iterations", 0) + 1
+configurable = Configuration.from_runnable_config(config)
+⋮----
+# Inputs for the planner
+prd_document = state.get("prd_document")
+⋮----
+goto="__end__" # Or route to coding_coordinator to generate PRD
+⋮----
+# Initialize or retrieve current PRD
+prd_review_feedback = state.get("prd_review_feedback")
+⋮----
+# Check for research results in either format
+research_results = state.get("research_results")
+structured_research_results = state.get("structured_research_results")
+⋮----
+# If we have structured results but no formatted results, convert them
+⋮----
+research_results = "\n\n## Research Results\n\n"
+⋮----
+existing_project_summary = state.get("existing_project_summary")
+failed_task_details = state.get("failed_task_details") # For re-planning
+conversation_history = state.get("messages", []) # For context
+⋮----
+# Prepare prompt_state_input for apply_prompt_template
+# The "coding_planner" template should be updated to use these fields.
+prompt_state_input = state.copy() # Start with a copy of the current state
+⋮----
+# Add any other relevant fields from state that the prompt might need
+# messages = apply_prompt_template("coding_planner", prompt_state_input, configurable)
+⋮----
+# Format prompt using the global constant
+# The old local PLANNING_PROMPT_TEMPLATE_V2 definition will be removed.
+prompt = PromptTemplate.from_template(CODING_PLANNER_TASK_LIST_PROMPT) # Use the global constant
+⋮----
+# Prepare variables for the prompt
+failed_task_details_str = "N/A"
+⋮----
+instruction_message = "Generate a detailed task plan based on the provided Product Requirements Document (PRD)."
+⋮----
+# Potentially add existing_project_summary content to messages if not too large
+⋮----
+# Add failed_task_details to messages
+⋮----
+# Simplified message construction for now. Real implementation uses apply_prompt_template with an updated template.
+messages = [
+⋮----
+# Append original message history if needed, ensure `apply_prompt_template` handles this correctly.
+# messages = state.get("messages", []) + messages
+⋮----
+# Try to get the LLM using get_llm_by_type first
+⋮----
+llm = get_llm_by_type("basic")  # Use basic LLM instead of looking up by agent type
+⋮----
+# Fallback to direct lookup
+llm = get_llm_by_type(AGENT_LLM_MAP.get("coding_planner", ""))
+⋮----
+response = llm.invoke(messages) # Pass the constructed messages
+full_response = response.content
+⋮----
+# Expecting LLM to output a JSON list of task dictionaries
+# Each task dict should include: id, name, description, dependencies, acceptance_criteria,
+# estimated_effort_hours, assignee_suggestion, status_live (initially Todo), execute_alone, max_retries.
+repaired_json_str = repair_json_output(full_response) # Use repair_json_output here
+⋮----
+parsed_tasks_from_llm = json.loads(repaired_json_str) # And here
+⋮----
+if not isinstance(parsed_tasks_from_llm, list): # Check if it's a list
+# If not a list, check if it's a dict with a "tasks" key
+⋮----
+parsed_tasks_from_llm = parsed_tasks_from_llm["tasks"]
+⋮----
+tasks_definition = []
+for i, task_data in enumerate(parsed_tasks_from_llm): # Iterate over the potentially extracted list
+⋮----
+# Validate and default essential fields
+task_id = task_data.get("id")
+⋮----
+task_id = f"task_{plan_iterations}_{i+1:03d}" # More unique default ID
+⋮----
+task_name = task_data.get("name")
+⋮----
+task_name = f"Unnamed Task {task_id}"
+⋮----
+description = task_data.get("description")
+⋮----
+description = "No description provided."
+⋮----
+# Get other fields with defaults
+dependencies = task_data.get("dependencies", [])
+acceptance_criteria = task_data.get("acceptance_criteria", [])
+estimated_effort_hours = task_data.get("estimated_effort_hours", 0) # Default to 0 or None
+assignee_suggestion = task_data.get("assignee_suggestion", "any")
+status_live = task_data.get("status_live", "Todo") # Initial status
+execute_alone = task_data.get("execute_alone", False)
+max_retries = task_data.get("max_retries", 1) # Default from previous logic
+⋮----
+# branch_name and status_in_plan from existing code might be planner's suggestions
+# Let's keep them for now if planner is intended to suggest them.
+suggested_branch_name = task_data.get("branch_name", f"task/{task_id.replace('_', '-')[:20]}") # Cleaner default
+planner_status_suggestion = task_data.get("status_in_plan", "todo")
+⋮----
+dependencies = []
+⋮----
+acceptance_criteria = []
+⋮----
+"status_live": status_live, # This will be the initial live status for task_orchestrator
+⋮----
+"suggested_branch_name": suggested_branch_name, # Planner's suggestion
+"planner_status_suggestion": planner_status_suggestion # Planner's suggested internal status
+⋮----
+if not tasks_definition and parsed_tasks_from_llm: # If list was not empty but parsing all items failed
+⋮----
+# This case will lead to an error message below if full_response was not empty.
+⋮----
+if not tasks_definition: # Handles both empty LLM list and parsing failures leading to empty list
+⋮----
+# Fallback: attempt to use the old plan parsing if it looks like the old format
+⋮----
+plan_obj = Plan.from_json(repaired_json_str) # Try old format as a last resort
+⋮----
+# Convert Plan object to tasks_definition (simplified)
+⋮----
+if not tasks_definition: # If old format also yielded nothing
+⋮----
+# Raise the error to be caught by the outer try-except, which goes to __end__
+⋮----
+updated_state = {
+⋮----
+"tasks_definition": tasks_definition, # New state field
+⋮----
+"failed_task_details": None # Clear after re-planning
+⋮----
+# Check if we're in non-interactive mode to automatically proceed
+⋮----
+error_message = f"I encountered an error trying to structure the detailed task plan. Error: {e}."
+⋮----
+"failed_task_details": None # Clear even on error if it was a re-plan attempt
+⋮----
+def human_feedback_plan_node(state: State) -> dict
+⋮----
+"""Node to manage iterative user feedback on the generated plan."""
+⋮----
+updated_state_dict = {}
+current_messages = list(state.get("messages", []))
+feedback = state.get("last_plan_feedback")
+iterations = state.get("plan_review_iterations", 0) + 1
+⋮----
+# Clear pending query and awaiting flag from previous turn
+⋮----
+# awaiting_plan_review_input will be set to True later if we need to wait
+⋮----
+updated_state_dict["last_plan_feedback"] = None # Clear feedback after processing
+⋮----
+# The feedback itself (stored in messages) will be used by coding_planner
+⋮----
+# No feedback, so generate query and wait
+⋮----
+tasks_definition = state.get("tasks_definition")
+⋮----
+formatted_steps = "No detailed task steps available in the current plan."
+⋮----
+formatted_steps = ""
+⋮----
+task_name = task.get("name", f"Unnamed Task {i+1}")
+task_desc = task.get("description", "No description.")
+dependencies = task.get("dependencies", [])
+deps_str = f"(depends on: {', '.join(dependencies)})" if dependencies else ""
+⋮----
+query_message = (
+⋮----
+updated_state_dict["plan_approved"] = False # Ensure not approved while waiting
+⋮----
+def human_prd_review_node(state: State) -> dict
+⋮----
+"""Node to manage iterative user feedback on the PRD."""
+⋮----
+feedback = state.get("last_prd_feedback")
+iterations = state.get("prd_review_iterations", 0) + 1
+⋮----
+# awaiting_prd_review_input will be set to True later if we need to wait
+⋮----
+updated_state_dict["last_prd_feedback"] = None # Clear feedback
+⋮----
+prd_document = state.get("prd_document", "No PRD document available.")
+⋮----
+updated_state_dict["prd_approved"] = False # Ensure not approved
+⋮----
+def human_initial_context_review_node(state: State) -> dict
+⋮----
+"""Node to manage iterative user feedback on initial context information."""
+⋮----
+feedback = state.get("last_initial_context_feedback")
+iterations = state.get("initial_context_iterations", 0) + 1 # Note: state key is initial_context_iterations
+⋮----
+# awaiting_initial_context_input will be set to True later if we need to wait
+⋮----
+updated_state_dict["last_initial_context_feedback"] = None # Clear feedback
+⋮----
+# This node assumes initial_context_summary is already populated by a previous node.
+initial_context_summary = state.get("initial_context_summary", "No initial context summary available.")
+⋮----
+updated_state_dict["initial_context_approved"] = False # Ensure not approved
+</file>
+
+<file path="graph/nodes/research.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+def background_investigation_node(state: State) -> Command[Literal["context_gatherer"]]
+⋮----
+query = state["messages"][-1].content
+⋮----
+searched_content = LoggedTavilySearch(max_results=SEARCH_MAX_RESULTS).invoke(
+background_investigation_results = None
+⋮----
+background_investigation_results = [
+⋮----
+background_investigation_results = web_search_tool.invoke(query)
+⋮----
+"""Research team node that collaborates on tasks."""
+⋮----
+# Check if we should return to a specific node after research
+return_to_node = state.get("research_return_to")
+⋮----
+# Check for results that need to be stored
+current_plan = state.get("current_plan")
+observations = state.get("observations", [])
+⋮----
+# If we have a clarification request and observations, format them for the coordinator
+⋮----
+# Format clarification research results for the coordinator
+research_results = "## Research Results for Clarification\n\n"
+⋮----
+# Add each observation
+⋮----
+title = f"Research Result {i+1}"
+content = observation
+⋮----
+# Check if observation is an object with title and content attributes
+⋮----
+title = observation.title
+⋮----
+content = observation.content
+⋮----
+# Store results in the state for the coordinator
+⋮----
+# If we have a complete research plan, store results and proceed
+⋮----
+# Combine all research results into a consolidated format
+research_results = []
+⋮----
+# Store each step's result as a separate research result
+result = {
+⋮----
+# Store the structured research results in the state
+⋮----
+# If we have a specific node to return to, go there
+⋮----
+# Default to returning to the task orchestrator
+⋮----
+# If we don't have a complete plan yet, continue with research
+⋮----
+def reporter_node(state: State)
+⋮----
+"""Reporter node that write a final report."""
+⋮----
+input_ = {
+invoke_messages = apply_prompt_template("reporter", input_)
+⋮----
+# Add a reminder about the new report format, citation style, and table usage
+⋮----
+response = get_llm_by_type(AGENT_LLM_MAP["reporter"]).invoke(invoke_messages)
+response_content = response.content
+⋮----
+async def researcher_node(state: State, config: RunnableConfig) -> Command[Literal["research_team"]]
+⋮----
+"""Placeholder for the researcher node. Performs a research step."""
+⋮----
+# In a real implementation, this node would:
+# 1. Get the current research step from current_plan.steps
+# 2. Execute the research (e.g., call an LLM with search tools)
+# 3. Store the result in the step's execution_res
+# 4. Update observations or other relevant state fields
+⋮----
+# For now, just log and return to research_team
+# Simulate finding some observation
+current_observations = state.get("observations", [])
+new_observation = "Placeholder research observation from researcher_node."
+updated_observations = current_observations + [new_observation]
+⋮----
+# Assume the research step (if any was being tracked) is now done
+# and the result is in updated_observations or directly in a step object (not modeled here yet)
+</file>
+
+<file path="graph/nodes/utils.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+def parse_json_response(response: str) -> Dict[str, Any]
+⋮----
+"""Parse a JSON response from an LLM."""
+⋮----
+# Try to parse the JSON directly
+⋮----
+# If that fails, try to extract JSON from the response
+⋮----
+# Look for JSON-like content between triple backticks
+⋮----
+json_content = response.split("```json", 1)[1].split("```", 1)[0]
+⋮----
+# Look for JSON-like content between regular backticks
+⋮----
+json_content = response.split("```", 1)[1].split("```", 1)[0]
+⋮----
+# Look for JSON-like content between curly braces
+⋮----
+json_content = response[response.find("{"):response.rfind("}") + 1]
+⋮----
+# If all parsing attempts fail, use the repair_json_output function
+repaired_json = repair_json_output(response)
+⋮----
+def format_task_for_display(task: Dict[str, Any]) -> str
+⋮----
+"""Format a task for display to the user."""
+formatted_task = f"# {task.get('name', 'Untitled Task')}\n\n"
+⋮----
+def get_task_dependencies(tasks: List[Dict[str, Any]]) -> Dict[str, List[str]]
+⋮----
+"""Get a dictionary of task dependencies."""
+dependencies = {}
+⋮----
+task_id = task.get('id')
+⋮----
+def sort_tasks_by_dependencies(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]
+⋮----
+"""Sort tasks by dependencies."""
+# Create a dictionary of task IDs to tasks
+task_dict = {task.get('id'): task for task in tasks if task.get('id')}
+⋮----
+# Create a dictionary of task dependencies
+dependencies = get_task_dependencies(tasks)
+⋮----
+# Create a list to store the sorted tasks
+sorted_tasks = []
+⋮----
+# Create a set to track visited tasks
+visited = set()
+⋮----
+# Define a recursive function to visit tasks
+def visit(task_id)
+⋮----
+# Visit all tasks
+</file>
+
 <file path="graph/__init__.py">
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
@@ -431,7 +1189,6 @@ builder.add_edge("background_investigator", "context_gatherer")  # Go to context
 ⋮----
 # Route based on goto field from planner_node
 ⋮----
-"human_feedback_plan": "reporter", # DIAGNOSTIC: Route to reporter instead of END
 "__end__": END, # Handle case where planner decides to end
 ⋮----
 # Route based on goto field from research_team_node
@@ -466,6 +1223,8 @@ def build_graph()
 # Import the shared State type
 from .types import State # Assume State will be expanded to include prd_document, prd_status, etc.
 ⋮----
+# Import the StepType enum and Plan classes
+⋮----
 # Import the nodes specific to the coding flow
 ⋮----
 coding_coordinator_node, # Will need internal logic for PRD iteration
@@ -473,155 +1232,191 @@ coding_coordinator_node, # Will need internal logic for PRD iteration
 task_orchestrator_node, # NEW - repurposed from prepare_codegen_task
 ⋮----
 human_feedback_plan_node, # This is for TASK PLAN review
-# coder_node, # Temporarily disconnected
 ⋮----
-human_prd_review_node, # NEW node for PRD review
+human_prd_review_node, # NEW for PRD feedback
 linear_integration_node, # NEWLY ADDED
+human_initial_context_review_node, # Legacy node for initial context review
+# New specialized nodes for initial context review
+⋮----
+context_gatherer_node, # Ensure this is imported
+# human_plan_review_node, # Stays removed
 ⋮----
 # Import GitHub nodes
 ⋮----
 # github_planning_node, # Already removed
 ⋮----
-# Import context gathering node
-⋮----
 # Import the new utility
 ⋮----
 logger = logging.getLogger(__name__)
 ⋮----
-# Moved should_revise_plan to module level (for task plan review)
-def should_revise_task_plan(state: State) -> Literal["revise", "accept"]: # Renamed for clarity
+# --- Define edge routing functions ---
 ⋮----
-feedback = state.get("interrupt_feedback") # Assumes human_feedback_plan_node puts feedback here
+def route_after_initial_context_review(state: State) -> Literal["coding_coordinator", "initial_context_query_generator"]
 ⋮----
-feedback_candidate = state["messages"][-1]
+# The query generator is the start of the explicit loop
 ⋮----
-feedback = feedback_candidate.content
+def route_after_prd_review(state: State) -> Literal["coding_planner", "coding_coordinator", "human_prd_review"]
 ⋮----
-feedback_str = str(feedback).strip().upper()
+"""Routes after human_prd_review_node based on approval and awaiting input flags."""
+⋮----
+def route_after_plan_review(state: State) -> Literal["linear_integration", "coding_planner", "human_feedback_plan"]
+⋮----
+"""Routes after human_feedback_plan_node based on approval and awaiting input flags."""
+⋮----
+logger.info("Plan approved. Proceeding to linear_integration.") # Or task_orchestrator if that is the actual next step
+⋮----
+# NEW conditional routing function for research_team
+def route_from_research_team(state: State) -> Literal["researcher", "task_orchestrator", "coding_coordinator", "coding_planner"]
+⋮----
+"""Determines the next step after the research_team node has processed a task or PRD research."""
+⋮----
+# FIRST PRIORITY: Check if we should return to a specific node based on the flag from context_gatherer
+return_to_node = state.get("research_return_to")
+⋮----
+# Clear the flag to prevent loops
+⋮----
+# SECOND PRIORITY: If there's a current active step that needs execution, process it
+current_plan = state.get("current_plan")
+⋮----
+# Check if there's an unexecuted step
+⋮----
+if not step.execution_res:  # Found an unexecuted step
+⋮----
+break  # Only handle the first unexecuted step
+⋮----
+# THIRD PRIORITY (default): If no other condition applies, always return to coding_coordinator
+# This simplifies the graph and ensures we don't have multiple possible destinations
 ⋮----
 # Placeholder for PRD review logic (similar to above but for PRD)
 # The human_prd_review_node will set 'prd_review_feedback' in state.
 # coding_coordinator_node will use 'prd_review_feedback'
-def route_after_prd_review(state: State) -> Literal["request_research", "iterate_prd", "prd_approved_to_planner"]
+def route_from_coordinator(state: State) -> Literal["context_gatherer", "coding_planner", "__end__"]
 ⋮----
-# This logic is effectively part of coding_coordinator_node's decision making
-# For now, the connections will be:
-# human_prd_review_node -> coding_coordinator
-# coding_coordinator then decides where to go next based on state.
-# This function itself isn't directly used for a conditional_edge from human_prd_review_node itself,
-# but coding_coordinator_node will implement this routing.
-feedback = state.get("prd_review_feedback", "").lower() # human_prd_review_node sets this
+# This function will read state set by coding_coordinator_node
 ⋮----
-if "approved" in feedback or "approve" in feedback : # Simplified approval
+# Add detailed logging
 ⋮----
-return "iterate_prd" # Default to iterating on PRD with new feedback
+# Direct bypass in non-interactive mode
 ⋮----
-# NEW conditional routing function for research_team
-def route_from_research_team(state: State) -> Literal["researcher", "task_orchestrator", "coding_coordinator"]
+# Check if we have a PRD document and approved status
 ⋮----
-"""Determines the next step after the research_team node has processed a task or PRD research."""
+# If we have a PRD document but not explicit approval yet
 ⋮----
-# Decision should ideally be based on a state field explicitly set by research_team_node,
-# or by interpreting the current_plan's active step.
+# In non-interactive mode with no PRD, the coding_coordinator should have created one
+# If we reach here, something might have gone wrong but we try to proceed
 ⋮----
-current_plan = state.get("current_plan")
+# Check if coordinator specifically set the prd_next_step
+next_step = state.get("prd_next_step")
 ⋮----
-# Check if research_team_node itself made a decision (e.g., by setting a specific state field)
-# This part is hypothetical, research_team_node would need to be updated to set such a field.
-# For now, we rely on interpreting the plan.
-# research_goto_decision = state.get("research_team_decision")
-# if research_goto_decision in ["researcher", "task_orchestrator", "coding_coordinator", "coding_planner"]:
-#     return research_goto_decision
+# Check for approval flag or feedback that indicates approval
 ⋮----
-# This can happen if context_gatherer went to research_team for general PRD research
-# without a detailed micro-plan within the research phase.
+# Check for approval in feedback
+prd_review_feedback = state.get("prd_review_feedback", "").lower()
 ⋮----
-active_step = None
-all_steps_done = True
+# If we have a PRD document but no specific next step or approval
 ⋮----
-if not step.execution_res: # Found an unexecuted step
-active_step = step
-all_steps_done = False
+# If we have no PRD document yet
 ⋮----
-return "coding_coordinator" # Research plan complete, results for PRD
+# The coordinator should have created one, but if not for some reason...
 ⋮----
-return "task_orchestrator" # Vision: research identifies direct coding task
-else: # Other step types or undefined
+# Default to ending if we hit an unexpected state
 ⋮----
-# Fallback if no active step could be determined (should ideally not happen if all_steps_done is false)
-⋮----
-# Placeholder node functions
-def prepare_codegen_task_node(state: State) -> State
-⋮----
-def codegen_success_node(state: State) -> State
-⋮----
-def codegen_failure_node(state: State) -> State
-⋮----
-MAX_POLL_ATTEMPTS = 10
-MAX_TRANSIENT_ERROR_ATTEMPTS = 3
+MAX_CODEGEN_POLL_ATTEMPTS = 10 # Define a max attempts for polling
 ⋮----
 def should_continue_polling(state: State) -> Literal["continue", "success", "failure", "error"]
 ⋮----
-status = state.get("codegen_task_status")
+"""Determines if codegen polling should continue, or if it's success/failure."""
+codegen_status = state.get("codegen_status")
 poll_attempts = state.get("codegen_poll_attempts", 0)
-normalized_status = str(status).lower() if status is not None else "none"
 ⋮----
-def build_coding_graph_base(checkpointer=None): # Renamed to base, memory passed in
+elif codegen_status == "failed": # Assuming poll_codegen_status_node might set this
+⋮----
+return "failure" # Or "error" depending on desired handling
+⋮----
+# If not completed/failed and attempts not exceeded, continue polling
+⋮----
+# Important: The poll_codegen_status_node should increment this
+# For safety, we could increment it here if the node doesn't, but it's better if the node does.
+# state["codegen_poll_attempts"] = poll_attempts + 1 # This might not persist correctly if not returned by the node
+⋮----
+def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed to base, memory passed in
 ⋮----
 builder = StateGraph(State)
 ⋮----
 # Add nodes
 ⋮----
+# Legacy node (kept for backward compatibility)
+⋮----
 builder.add_node("coding_coordinator", coding_coordinator_node) # Central for PRD
 builder.add_node("human_prd_review", human_prd_review_node) # NEW for PRD feedback
-builder.add_node("context_gatherer", context_gathering_node) # For research
+builder.add_node("context_gatherer", context_gatherer_node) # Ensure this is imported
 builder.add_node("research_team", research_team_node) # For research
 builder.add_node("researcher", researcher_node) # ADDED
 ⋮----
 builder.add_node("coding_planner", coding_planner_node) # Takes approved PRD
-builder.add_node("human_feedback_plan", human_feedback_plan_node) # For TASK PLAN review
+builder.add_node("human_feedback_plan", human_feedback_plan_node) # NEW for TASK PLAN review
 builder.add_node("linear_integration", linear_integration_node) # NEWLY ADDED
 ⋮----
 builder.add_node("task_orchestrator", task_orchestrator_node) # Renamed from prepare_codegen_task
 ⋮----
 # builder.add_node("coder", coder_node) # Temporarily disconnected
 ⋮----
-# --- Define Edges ---
+# --- Define Simplified Edges ---
+# START FLOW: Initial context gathering → specialized nodes for review → coordinator
 ⋮----
-# PRD Building Loop managed by coding_coordinator
-# coding_coordinator_node's internal logic will update state.prd_status and state.goto_prd_next_step
-# Then its conditional edges will route based on that.
-# Example: state.prd_next_step can be "human_prd_review", "context_gatherer", "coding_planner"
-def route_from_coordinator(state: State) -> Literal["human_prd_review", "context_gatherer", "coding_planner", "__end__"]
+# Connect initial_context to the new specialized flow
 ⋮----
-# This function will read state set by coding_coordinator_node
-# (e.g., state.get('prd_next_step', 'human_prd_review'))
-# It reflects the decision made *inside* coding_coordinator_node's execution
-next_step = state.get("prd_next_step", "human_prd_review") # Default to getting PRD feedback
-if state.get("prd_approved"): # Explicit flag set by coordinator after processing feedback
+# Connect the specialized nodes in sequence
 ⋮----
-route_from_coordinator, # Decision made by coordinator node's logic reflected in state
+# Conditional routing from the approval router (initial context)
 ⋮----
-"coding_planner": "coding_planner", # Exit PRD loop to planning
-"__end__": END # Fallback, should ideally not be hit if logic is sound
+# Using the more specific route_after_initial_context_review which points to query_generator for loop
 ⋮----
-builder.add_edge("human_prd_review", "coding_coordinator") # Feedback goes back to coordinator
-builder.add_edge("context_gatherer", "research_team") # Research path
+# Keep the legacy node connected but route to the new flow
+# builder.add_edge("human_initial_context_review", "initial_context_query_generator") # Or remove if fully deprecated
+# For now, let's assume human_initial_context_review_node (if called) would also use the new routing.
+# However, this node is in planning.py and might be different from the one in coordination.py
+# To be safe, if it's used, it should route via its own logic or be removed from active graph if superseded.
+# Given the new initial_context_* nodes, the direct human_initial_context_review might be deprecated from START.
+# The one in planning.py is handled by refactor, if it is still wired up, it would need its own conditional edge or removal.
 ⋮----
-# "coding_planner": "coding_planner" # REMOVED - Not a direct path from research_team
+# PRD BUILDING LOOP:
+# coding_coordinator decides if PRD needs creation/update, then goes to human_prd_review
 ⋮----
-builder.add_edge("researcher", "research_team") # Researcher always feeds back to the research_team to re-evaluate
+route_from_coordinator, # This existing router decides if PRD is needed, or research, or plan
 ⋮----
-# Task Planning and Review Loop
-builder.add_edge("coding_planner", "human_feedback_plan") # Planner sends task plan for review
+"coding_planner": "coding_planner", # Directly to planner if PRD already approved
 ⋮----
-should_revise_task_plan, # Uses the renamed function for task plan feedback
+# After human reviews PRD, route based on their feedback
 ⋮----
-"accept": "linear_integration" # Approved task plan goes to Linear integration
+"human_prd_review", # Added source node
 ⋮----
-builder.add_edge("linear_integration", "task_orchestrator") # After Linear sync, go to orchestrator
+"coding_coordinator": "coding_coordinator", # Loop back to coordinator for revisions
+"human_prd_review": "human_prd_review" # Added loop back to self if still awaiting input
 ⋮----
-# Task Orchestration and Codegen Loop
+# Context gathering (research) can be triggered by coding_coordinator or other nodes
+⋮----
+"coding_planner": "coding_planner" # Added this path
+⋮----
+builder.add_edge("researcher", "research_team") # Researcher reports back to team
+⋮----
+# TASK PLANNING LOOP:
+# coding_planner (after PRD approved) creates a plan, then goes to human_feedback_plan
+⋮----
+# After human reviews the plan, route based on their feedback
+⋮----
+"human_feedback_plan", # Added source node
+⋮----
+"linear_integration": "linear_integration", # Plan approved
+"coding_planner": "coding_planner",         # Revisions requested
+"human_feedback_plan": "human_feedback_plan" # Added loop back to self if still awaiting input
+⋮----
+# After linear_integration, if successful, effectively moves to task execution or completion.
+# For now, let's assume linear_integration is a step before orchestrator or END.
+# The example from human_feedback_plan used to go to 'linear_integration'.
+# What comes after linear_integration? Assuming task_orchestrator for now.
+⋮----
+# TASK EXECUTION LOOP (Task Orchestrator and Codegen)
 def route_from_orchestrator(state: State) -> Literal["initiate_codegen", "coding_planner", "__end__"]
 ⋮----
 # This logic will be implemented in task_orchestrator_node Python function.
@@ -631,37 +1426,45 @@ orchestrator_decision = state.get("orchestrator_next_step", "__end__") # Default
 ⋮----
 return "__end__" # Fallback
 ⋮----
-"initiate_codegen": "initiate_codegen",       # Orchestrator dispatches a task
-"coding_planner": "coding_planner",           # Orchestrator sends a persistent failure back to planner
-"__end__": END                               # All tasks done
+"initiate_codegen": "initiate_codegen",     # Orchestrator dispatches a task
+"coding_planner": "coding_planner",         # Send failures back to planner
+"__end__": END                              # All tasks done
+⋮----
+# CODEGEN FLOW
+⋮----
+should_continue_polling, # type: ignore
 ⋮----
 # Codegen outcomes feed back to the orchestrator
 ⋮----
 # GitHub manager feeds back to orchestrator on successful merge/completion of a task
 ⋮----
+"initial_context_wait_for_feedback",  # New specialized node for waiting for feedback
+⋮----
+# Create a fresh graph with no memory per call
 def build_coding_graph()
 ⋮----
-return build_coding_graph_base(checkpointer=None) # No memory / checkpointer by default
+"""Build a coding graph with no memory persistence."""
 ⋮----
+# Create a graph for interactive use (with interrupts)
+def build_interactive_coding_graph()
+⋮----
+"""Build a coding graph with memory persistence for interactive use."""
+memory = MemorySaver()
+⋮----
+# Create a persisted graph with memory
 def build_coding_graph_with_memory()
 ⋮----
-# Create the graph instance (for visualization and potentially direct use if no memory needed)
-coding_graph = build_coding_graph()
+"""Build a coding graph with memory persistence."""
 ⋮----
-# Visualize the graph after compilation
+# Visualization helper
+def visualize_coding_graph(graph=None)
 ⋮----
-mermaid_syntax = get_graph_mermaid_syntax(coding_graph)
+"""Visualize the coding graph and save to file."""
 ⋮----
-# print("--- Mermaid Syntax START ---")
-# print(mermaid_syntax)
-# print("--- Mermaid Syntax END ---")
+graph = build_coding_graph()
 ⋮----
-# Save to a Markdown file as well, so it can be easily viewed/rendered
-md_file_path = "coding_graph.md"
-⋮----
-f.write("```mermaid\n") # Ensure mermaid language identifier is on its own line
-f.write(mermaid_syntax) # The syntax itself should control its internal newlines
-f.write("\n```")       # Ensure closing backticks are on their own line after the syntax
+# Don't create the graph instance here
+# Only create it when actually needed by functions that use it
 </file>
 
 <file path="graph/context_nodes.py">
@@ -670,133 +1473,55 @@ f.write("\n```")       # Ensure closing backticks are on their own line after th
 ⋮----
 logger = logging.getLogger(__name__)
 ⋮----
-"""Node that gathers context from Linear and the repository before planning."""
+"""Prepares context such as API reference docs, github repositories, or other info for the LLM."""
 ⋮----
-configurable = Configuration.from_runnable_config(config)
+# Initialize variables
+current_plan = None
+research_return_to = "coding_coordinator"  # Default return node for research_team
 ⋮----
-# Initialize context information
-context_info = {
+# Check if we were redirected from coding_coordinator for clarification research
+is_clarification_research = state.get("clarification_prompt_from_coordinator") is not None and state.get("clarification_prompt_from_coordinator") != ""
 ⋮----
-# Analyze repository first to get the repository name
+# Setup research parameters based on whether this is a clarification research
 ⋮----
-repo_analyzer = RepoAnalyzer(configurable.repo_path or ".")
-repo_analysis = repo_analyzer.analyze()
+# Use the clarification prompt as the research query
+research_query = state.get("clarification_prompt_from_coordinator", "")
 ⋮----
-# Simplify the repo analysis for the context
-simplified_analysis = {
+# Using default research_return_to value
 ⋮----
-# Get Git information
-git_info = RepoAnalyzer.get_git_info(configurable.repo_path or ".")
+# Create a research plan specifically for this clarification
 ⋮----
-# Check if we should create a workspace for this session
-# For now, we'll make this optional to maintain compatibility with the GitHub repository picker
-create_workspace = configurable.create_workspace if hasattr(configurable, 'create_workspace') else False
+# Simple research plan with a descriptive title
+query_preview = research_query[:50] + "..." if len(research_query) > 50 else research_query
+current_plan = Plan(
 ⋮----
-# Create or get the workspace manager
-workspace_manager = WorkspaceManager(configurable.repo_path or ".")
+locale="en-US",  # Default to English
+has_enough_context=False,  # We're doing research, so we don't have enough context
 ⋮----
-# Create a new workspace for this session
-workspace_description = "Agent workspace for " + (
+# We'll set this in the Command update at the end
 ⋮----
-workspace = workspace_manager.create_workspace(description=workspace_description)
+# For normal research from initial context gathering
+last_message = ""
 ⋮----
-# Switch to the workspace branch
+last_message = msg.content
 ⋮----
-# Add workspace info to context
+# Extract research keywords from the user's message if available
+research_query = last_message
 ⋮----
-# Add current branch info to context
+# Create a proper research plan for the task
 ⋮----
-# Get Linear tasks and epics if configured
+# Create a simple research plan
 ⋮----
-linear_service = LinearService(
+has_enough_context=False,  # We're doing research
 ⋮----
-# Get or create project based on configuration or repository name
-project = None
-project_name = configurable.linear_project_name
+# Create a copy of the state for updates
+state_updates = {}
 ⋮----
-# If no project name is specified, use the repository name
+# Add research_return_to to the updates
 ⋮----
-# Extract repo name from remote URL
-remote_url = context_info["git_info"]["remote_url"]
+# Add current_plan if it was created
 ⋮----
-# Handle both HTTPS and SSH URLs
-⋮----
-remote_url = remote_url[:-4]  # Remove .git suffix
-⋮----
-repo_name = remote_url.split("/")[-1]  # Get the last part of the URL
-⋮----
-project_name = repo_name
-⋮----
-project = linear_service.filter_or_create_project(
-⋮----
-# Update workspace with Linear project ID if we have a workspace
-⋮----
-# Create a dummy project for testing
-⋮----
-# Get active tasks
-⋮----
-tasks = linear_service.get_team_tasks(include_completed=False)
-⋮----
-# Filter tasks by project if a project is specified
-⋮----
-tasks = [task for task in tasks if task.project_id == project.id]
-⋮----
-# Get epics
-⋮----
-epics = linear_service.get_epics()
-⋮----
-# Filter epics by project if a project is specified
-⋮----
-epics = [epic for epic in epics if epic.project_id == project.id]
-⋮----
-# Repository analysis was already done at the beginning of the function
-⋮----
-# Create a summary message for the planner
-context_summary = "# Context Information\n\n"
-⋮----
-# Add workspace information if available
-⋮----
-# Add Git information
-⋮----
-# Add repository analysis
-⋮----
-# Add languages
-⋮----
-# Add dependencies
-⋮----
-# Add top-level directories
-⋮----
-# Add README summary
-⋮----
-# Add Linear project information
-⋮----
-# Add Linear epics
-⋮----
-status = "✅" if epic["completed"] else "🔄"
-project_info = f" [Project: {epic['project_id']}]" if epic.get("project_id") else ""
-⋮----
-# Add Linear tasks
-⋮----
-# Group tasks by epic
-tasks_by_epic = {}
-standalone_tasks = []
-⋮----
-# Add tasks grouped by epic
-⋮----
-# Find the epic title
-epic_title = "Unknown Epic"
-⋮----
-epic_title = epic["title"]
-⋮----
-project_info = f" [Project: {task['project_id']}]" if task.get("project_id") else ""
-⋮----
-# Add standalone tasks
-⋮----
-# Add errors if any
-⋮----
-# For the research path, we primarily want to ensure the state is passed correctly.
-# The detailed context_summary might be less relevant for research_team which will use its own tools.
-# However, context_info might still be useful.
+# Always return to research_team which will handle routing based on state flags
 ⋮----
 # Placeholder for a more detailed repository analysis function if needed separately
 # def analyze_repository_node(state: State, config: RunnableConfig) -> State:
@@ -1001,779 +1726,8 @@ task_branch_name = task_branch_name[5:]
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
 ⋮----
-logger = logging.getLogger(__name__)
-⋮----
-"""Handoff to planner agent to do plan."""
-# This tool is not returning anything: we're just using it
-# as a way for LLM to signal that it needs to hand off to planner agent
-⋮----
-def background_investigation_node(state: State) -> Command[Literal["context_gatherer"]]
-⋮----
-query = state["messages"][-1].content
-⋮----
-searched_content = LoggedTavilySearch(max_results=SEARCH_MAX_RESULTS).invoke(
-background_investigation_results = None
-⋮----
-background_investigation_results = [
-⋮----
-background_investigation_results = web_search_tool.invoke(query)
-⋮----
-"""Planner node that generates a detailed task breakdown from the PRD."""
-⋮----
-plan_iterations = state.get("plan_iterations", 0) + 1
-configurable = Configuration.from_runnable_config(config)
-⋮----
-# Inputs for the planner
-prd_document = state.get("prd_document")
-⋮----
-goto="__end__" # Or route to coding_coordinator to generate PRD
-⋮----
-existing_project_summary = state.get("existing_project_summary")
-failed_task_details = state.get("failed_task_details") # For re-planning
-⋮----
-# Prepare prompt_state_input for apply_prompt_template
-# The "coding_planner" template should be updated to use these fields.
-prompt_state_input = state.copy() # Start with a copy of the current state
-⋮----
-# Add any other relevant fields from state that the prompt might need
-# messages = apply_prompt_template("coding_planner", prompt_state_input, configurable)
-⋮----
-# Format prompt using the global constant
-# The old local PLANNING_PROMPT_TEMPLATE_V2 definition will be removed.
-prompt = PromptTemplate.from_template(CODING_PLANNER_TASK_LIST_PROMPT) # Use the global constant
-⋮----
-# Prepare variables for the prompt
-failed_task_details_str = "N/A"
-⋮----
-instruction_message = "Generate a detailed task plan based on the provided Product Requirements Document (PRD)."
-⋮----
-# Potentially add existing_project_summary content to messages if not too large
-⋮----
-# Add failed_task_details to messages
-⋮----
-# Simplified message construction for now. Real implementation uses apply_prompt_template with an updated template.
-messages = [
-⋮----
-# Append original message history if needed, ensure `apply_prompt_template` handles this correctly.
-# messages = state.get("messages", []) + messages
-⋮----
-llm = get_llm_by_type(AGENT_LLM_MAP["coding_planner"])
-response = llm.invoke(messages) # Pass the constructed messages
-full_response = response.content
-⋮----
-# Expecting LLM to output a JSON list of task dictionaries
-# Each task dict should include: id, name, description, dependencies, acceptance_criteria,
-# estimated_effort_hours, assignee_suggestion, status_live (initially Todo), execute_alone, max_retries.
-repaired_json_str = repair_json_output(full_response) # Use repair_json_output here
-parsed_tasks_from_llm = json.loads(repaired_json_str) # And here
-⋮----
-if not isinstance(parsed_tasks_from_llm, list): # Check if it's a list
-# If not a list, check if it's a dict with a "tasks" key
-⋮----
-parsed_tasks_from_llm = parsed_tasks_from_llm["tasks"]
-⋮----
-tasks_definition = []
-for i, task_data in enumerate(parsed_tasks_from_llm): # Iterate over the potentially extracted list
-⋮----
-# Validate and default essential fields
-task_id = task_data.get("id")
-⋮----
-task_id = f"task_{plan_iterations}_{i+1:03d}" # More unique default ID
-⋮----
-task_name = task_data.get("name")
-⋮----
-task_name = f"Unnamed Task {task_id}"
-⋮----
-description = task_data.get("description")
-⋮----
-description = "No description provided."
-⋮----
-# Get other fields with defaults
-dependencies = task_data.get("dependencies", [])
-acceptance_criteria = task_data.get("acceptance_criteria", [])
-estimated_effort_hours = task_data.get("estimated_effort_hours", 0) # Default to 0 or None
-assignee_suggestion = task_data.get("assignee_suggestion", "any")
-status_live = task_data.get("status_live", "Todo") # Initial status
-execute_alone = task_data.get("execute_alone", False)
-max_retries = task_data.get("max_retries", 1) # Default from previous logic
-⋮----
-# branch_name and status_in_plan from existing code might be planner's suggestions
-# Let's keep them for now if planner is intended to suggest them.
-suggested_branch_name = task_data.get("branch_name", f"task/{task_id.replace('_', '-')[:20]}") # Cleaner default
-planner_status_suggestion = task_data.get("status_in_plan", "todo")
-⋮----
-dependencies = []
-⋮----
-acceptance_criteria = []
-⋮----
-"status_live": status_live, # This will be the initial live status for task_orchestrator
-⋮----
-"suggested_branch_name": suggested_branch_name, # Planner's suggestion
-"planner_status_suggestion": planner_status_suggestion # Planner's suggested internal status
-⋮----
-if not tasks_definition and parsed_tasks_from_llm: # If list was not empty but parsing all items failed
-⋮----
-# This case will lead to an error message below if full_response was not empty.
-⋮----
-if not tasks_definition: # Handles both empty LLM list and parsing failures leading to empty list
-⋮----
-# Fallback: attempt to use the old plan parsing if it looks like the old format
-⋮----
-plan_obj = Plan.from_json(repaired_json_str) # Try old format as a last resort
-⋮----
-# Convert Plan object to tasks_definition (simplified)
-⋮----
-if not tasks_definition: # If old format also yielded nothing
-⋮----
-# Raise the error to be caught by the outer try-except, which goes to __end__
-⋮----
-updated_state = {
-⋮----
-"tasks_definition": tasks_definition, # New state field
-"current_plan": None, # Deprecate or redefine current_plan if tasks_definition is the source of truth
-⋮----
-"failed_task_details": None # Clear after re-planning
-⋮----
-error_message = f"I encountered an error trying to structure the detailed task plan. Error: {e}. LLM response was: {full_response[:500]}..."
-⋮----
-"failed_task_details": None # Clear even on error if it was a re-plan attempt
-⋮----
-"""Node to wait for user feedback on the generated coding plan."""
-⋮----
-# Create a more structured interrupt with a clear value
-⋮----
-interrupt_message = "Please review the generated coding plan. Respond with 'accept' or provide feedback for revision."
-interrupt_value = InterruptValue(value=interrupt_message, ns=["human_feedback_plan"])
-feedback = interrupt(interrupt_value)
-⋮----
-feedback_str = str(feedback).strip().upper()
-⋮----
-# On accept, always go to task_orchestrator based on current plan
-⋮----
-# Extract the revision request (assuming format like "REVISE: Change step 3...")
-revision_details = str(feedback).strip()
-# Add the user's revision request to the message history for the planner
-⋮----
-# plan_iterations already updated in coding_planner_node
-⋮----
-# Handle unclear feedback - perhaps ask again or default to revision?
-⋮----
-goto="coding_planner", # Go back to planner with the clarification request
-⋮----
-"""Coordinator node that communicate with customers."""
-⋮----
-messages = apply_prompt_template("coordinator", state)
-response = (
-⋮----
-.bind_tools([handoff_to_planner])  # Restore tool binding
-⋮----
-goto = "__end__"
-locale = state.get("locale", "en-US")  # Default locale if not specified
-⋮----
-# Restore original logic for checking tool calls
-⋮----
-goto = "context_gatherer"
-⋮----
-# if the search_before_planning is True, add the web search tool to the planner agent
-goto = "background_investigator"
-⋮----
-locale = tool_locale
-⋮----
-# The original didn't add the coordinator's direct response to messages here,
-# as it relied on the tool call for the next step.
-# If there was a direct response without a tool call, it was usually just an end to the conversation.
-⋮----
-def reporter_node(state: State)
-⋮----
-"""Reporter node that write a final report."""
-⋮----
-current_plan = state.get("current_plan")
-input_ = {
-invoke_messages = apply_prompt_template("reporter", input_)
-observations = state.get("observations", [])
-⋮----
-# Add a reminder about the new report format, citation style, and table usage
-⋮----
-response = get_llm_by_type(AGENT_LLM_MAP["reporter"]).invoke(invoke_messages)
-response_content = response.content
-⋮----
-"""Research team node that collaborates on tasks."""
-⋮----
-"""Helper function to execute a step using the specified agent."""
-⋮----
-# Check if current_plan is None or doesn't have steps
-⋮----
-# Handle the case where there's no plan - use the last message as the task
-last_message = state["messages"][-1].content if state.get("messages") else "No task specified"
-⋮----
-# Prepare a simple input for the agent based on the last message
-agent_input = {
-⋮----
-# Set a placeholder step for logging
-step = type('Step', (), {'title': 'Direct task', 'description': last_message, 'execution_res': None})
-⋮----
-# Find the first unexecuted step
-step = None
-⋮----
-step = s
-⋮----
-# If all steps are executed or no steps found, use a default task
-⋮----
-step = type('Step', (), {'title': 'Additional task', 'description': last_message, 'execution_res': None})
-⋮----
-# Prepare the input for the agent
-⋮----
-# Add citation reminder for researcher agent
-⋮----
-# Invoke the agent
-result = await agent.ainvoke(input=agent_input)
-⋮----
-# Process the result
-response_content = result["messages"][-1].content
-⋮----
-# Update the step with the execution result if it's a real step from a plan
-⋮----
-# Determine the next node based on the workflow context
-⋮----
-next_node = "context_gatherer"  # Continue to context gatherer for coding workflow
-⋮----
-next_node = "research_team" # Default for research workflow
-⋮----
-goto=next_node, # Use the determined next node
-⋮----
-"""Helper function to set up an agent with appropriate tools and execute a step.
-
-    This function handles the common logic for both researcher_node and coder_node:
-    1. Configures MCP servers and tools based on agent type
-    2. Creates an agent with the appropriate tools or uses the default agent
-    3. Executes the agent on the current step
-
-    Args:
-        state: The current state
-        config: The runnable config
-        agent_type: The type of agent ("researcher" or "coder")
-        default_agent: The default agent to use if no MCP servers are configured
-        default_tools: The default tools to add to the agent
-
-    Returns:
-        Command to update state and go to research_team
-    """
-⋮----
-mcp_servers = {}
-enabled_tools = {}
-⋮----
-# Extract MCP server configuration for this agent type
-⋮----
-# Create and execute agent with MCP tools if available
-⋮----
-loaded_tools = default_tools[:]
-⋮----
-agent = create_agent(agent_type, agent_type, loaded_tools, agent_type)
-⋮----
-# Use default agent if no MCP servers are configured
-⋮----
-"""Researcher node that do research"""
-⋮----
-"""Coder node that do code analysis."""
-⋮----
-# Original content commented out to prevent any potential interference:
-# logger.info("Coder node is coding.")
-#
-# # Check if we have workspace information and switch to the workspace branch
-# if state.get("context_info") and state["context_info"].get("workspace"):
-#     try:
-#         import os
-#         workspace = state["context_info"]["workspace"]
-#         logger.info(f"Ensuring coder is on workspace branch {workspace['branch_name']}")
-⋮----
-#         # Import the workspace manager
-#         from src.tools.workspace_manager import WorkspaceManager
-⋮----
-#         # Create the workspace manager
-#         workspace_manager = WorkspaceManager(os.getcwd())
-⋮----
-#         # Switch to the workspace branch
-#         workspace_manager.switch_to_workspace(workspace["id"])
-#         logger.info(f"Successfully switched to workspace branch {workspace['branch_name']}")
-#     except Exception as ws_error:
-#         logger.error(f"Error switching to workspace branch: {ws_error}", exc_info=True)
-# elif state.get("context_info") and state["context_info"].get("current_branch"):
-#     # If we're not using workspaces, log the current branch
-#     current_branch = state["context_info"]["current_branch"]
-#     logger.info(f"Using current branch: {current_branch}")
-⋮----
-# return await _setup_and_execute_agent_step(
-#     state,
-#     config,
-#     "coder",
-#     coder_agent,
-#     [python_repl_tool],
-# )
-# Return a dummy command to satisfy type hints if absolutely necessary,
-# though this node should not be reached.
-⋮----
-# === Coding Flow Nodes ===
-⋮----
-"""
-    Manages the PRD development lifecycle.
-    Initializes or updates the PRD based on project context, user feedback, and research.
-    Determines the next step in the PRD process (review, research, or move to planning).
-    """
-⋮----
-# Check if this is the first iteration with a brief input
-⋮----
-# Access force_interactive directly as an attribute, not using get()
-force_interactive = getattr(configurable, "force_interactive", False)
-⋮----
-force_interactive = False
-⋮----
-# Get the original user message
-original_message = ""
-⋮----
-original_message = msg.content
-⋮----
-# Check if the input is brief (less than 20 words)
-is_brief_input = len(original_message.split()) < 20 if original_message else False
-⋮----
-# Force human review for brief inputs on first iteration
-prd_iterations = state.get("prd_iterations", 0)
-⋮----
-# Create a simple state update to route to human_prd_review
-# The detailed message will be created in the human_prd_review_node
-updated_state = state.copy()
-⋮----
-updated_state["prd_iterations"] = 0  # Set to 0 so human_prd_review_node will create the detailed message
-⋮----
-# Initialize or retrieve current PRD
-prd_document = state.get("prd_document", "")
-prd_review_feedback = state.get("prd_review_feedback")
-research_results = state.get("research_results")
-⋮----
-# Prepare state for the prompt template
-# The prompt template "coding_coordinator_prd" should be designed to handle these fields.
-prompt_state_input = {
-⋮----
-"messages": state.get("messages", []), # Original messages
-⋮----
-"initial_context_summary": state.get("initial_context_summary", "") # Fallback or complementary
-⋮----
-# Handle direct approval from human_prd_review_node
-⋮----
-"prd_review_feedback": None, # Clear feedback
-"research_results": None, # Clear research results
-⋮----
-# LLM call to update PRD and decide next step
-# Assuming a new prompt template "coding_coordinator_prd"
-# This template should guide the LLM to:
-# 1. Initialize PRD if prd_document is empty, using user request and existing_project_summary.
-# 2. Incorporate prd_review_feedback if present.
-# 3. Incorporate research_results if present.
-# 4. Output the updated prd_document.
-# 5. Output a structured decision for prd_next_step (e.g., "NEXT_STEP: human_prd_review", "NEXT_STEP: context_gatherer", "NEXT_STEP: prd_ready_for_final_review")
-⋮----
-# For now, we'll simulate the LLM's structured output for next_step parsing.
-# In a real scenario, this comes from parsing the LLM response.
-⋮----
-messages_for_llm = apply_prompt_template("coding_coordinator", prompt_state_input) # CORRECTED TEMPLATE NAME
-⋮----
-response = get_llm_by_type(AGENT_LLM_MAP["coordinator"]).invoke(messages_for_llm)
-⋮----
-# --- Parse LLM Response ---
-# Expecting JSON output from LLM: {"updated_prd": "...", "next_action": "..."}
-parsed_prd_document = prd_document # Default to original PRD if parsing fails
-parsed_next_step = "human_prd_review" # Default next step
-ai_message_content = response_content # Default AI message is the raw response
-⋮----
-repaired_json_str = repair_json_output(response_content)
-parsed_output = json.loads(repaired_json_str)
-⋮----
-parsed_prd_document = parsed_output.get("updated_prd", prd_document)
-next_action_from_llm = parsed_output.get("next_action")
-⋮----
-parsed_next_step = next_action_from_llm
-if parsed_next_step == "prd_complete": # LLM signals PRD is internally complete
-⋮----
-parsed_next_step = "human_prd_review" # Still goes to human for approval
-⋮----
-# Keep parsed_prd_document as updated by LLM if possible
-⋮----
-# For the AIMessage, we can use a summary or the structured data if it's clean
-ai_message_content = f"[PRD Coordinator Update]\nNext Action Proposed: {parsed_next_step}\nPRD (first 100 chars): {parsed_prd_document[:100]}..."
-⋮----
-# ai_message_content already defaults to raw response_content
-⋮----
-# ai_message_content already defaults to raw response_content
-# parsed_prd_document and parsed_next_step remain their defaults
-⋮----
-# Update state
-updated_state_fields = {
-⋮----
-"prd_approved": False, # Approval only happens after human_prd_review node signals it
-"prd_review_feedback": None, # Clear feedback after processing
-"research_results": None, # Clear research results after processing
-# "messages": state["messages"] + [response] # Add LLM response (original way)
-⋮----
-# Construct the new messages list
-new_messages = list(state["messages"])
-⋮----
-new_messages.append(response) # Add the actual LLM response that drove the decision
-⋮----
-) -> Command[Literal["codegen_executor", "task_orchestrator", "__end__"]]: # Changed coder to task_orchestrator
-"""Dispatcher node to route coding tasks."""
-⋮----
-# TODO: Implement logic to analyze state (user request, coordinator response)
-# and decide the next action (e.g., use Codegen, plan, execute directly).
-# For now, placeholder logic: always try Codegen if description exists.
-⋮----
-last_message = state["messages"][-1].content
-# Extremely basic check - improve this significantly
-⋮----
-# Ensure task description is set (might need better logic)
-⋮----
-state["codegen_task_description"] = state["messages"][-2].content # Tentative
-⋮----
-# Placeholder: maybe route to existing coder or end?
-⋮----
-def codegen_executor_node(state: State) -> State
-⋮----
-"""Node to execute tasks using Codegen.com service."""
-⋮----
-# TODO: Implement CodegenService interaction
-# 1. Instantiate CodegenService (get credentials from config/env)
-# 2. Check current task status (polling?)
-# 3. If no task running, start task using state['codegen_task_description']
-# 4. Update state with task ID, status, object, results etc.
-# 5. Decide if polling is needed or if task is complete/failed.
-⋮----
-task_description = state.get("codegen_task_description")
-task_status = state.get("codegen_task_status")
-⋮----
-# Placeholder: Just update status and return state
-⋮----
-# This node likely needs to return a Command to decide the next step
-# (e.g., poll again, report results, end). For now, just returns updated state.
-# Returning state directly implies it's a terminal node in this simple setup,
-# which is incorrect for a real implementation.
-⋮----
-# === New Codegen Flow Nodes ===
-⋮----
-def initiate_codegen_node(state: State, config: RunnableConfig) -> State: # Added config argument
-⋮----
-"""Initiates a task with the Codegen.com service."""
-⋮----
-configurable = Configuration.from_runnable_config(config) # Load config
-⋮----
-# Update state to reflect error? Or raise exception?
-⋮----
-return updated_state # Or raise?
-⋮----
-# Get credentials from Configuration object
-org_id = configurable.codegen_org_id
-token = configurable.codegen_token
-⋮----
-logger.error("Codegen ORG_ID or TOKEN not found in environment or config.") # Updated log message
-⋮----
-# Import moved inside function to avoid top-level dependency if not used
-⋮----
-codegen_service = CodegenService(org_id=org_id, token=token)
-result = codegen_service.start_task(task_description)
-⋮----
-def poll_codegen_status_node(state: State, config: RunnableConfig) -> State: # Added config argument
-⋮----
-"""Polls the status of the ongoing Codegen.com task."""
-⋮----
-task_id = state.get("codegen_task_id")
-if not task_id: # or not sdk_object:
-⋮----
-logger.error("Codegen ORG_ID or TOKEN not found in environment or config for polling.") # Updated log message
-⋮----
-# Pass task_id or sdk_object as required by your poll_task implementation
-# Assuming poll_task needs the task_id
-poll_result = codegen_service.poll_task(task_id=task_id)
-⋮----
-new_status = poll_result.get("status", "UNKNOWN_STATUS")
-⋮----
-# Placeholder node functions (to be implemented)
-def task_orchestrator_node(state: State) -> State
-⋮----
-tasks_live = state.get("tasks_live", [])
-⋮----
-tasks_live = [] # Default to empty list to prevent further errors
-⋮----
-# --- Process outcome of the previously dispatched task ---
-processed_id = state.get("processed_task_id")
-processed_outcome = state.get("processed_task_outcome")
-processed_failure_details = state.get("processed_task_failure_details")
-⋮----
-task_updated = False
-for task in tasks_live: # Iterate by index to safely modify/replace items if needed for retry counts
-⋮----
-max_retries = task.get("max_retries", 1) # Default to 1 retry if not specified
-current_retry_count = task.get("current_retry_count", 0)
-⋮----
-task["status_live"] = "Todo" # Mark for retry by setting back to Todo
-⋮----
-# No need to set orchestrator_next_step here, normal loop will pick it up if ready
-⋮----
-task["status_live"] = "CompletedCriticalFailure" # New status for permanent failure after retries
-⋮----
-# This task will now be handled by the logic that checks for overall completion or deadlocks
-# If a critical failure occurs, we might want to immediately try to forward to planner
-# This part of the logic will be handled below in the "Set next step based on findings" block
-⋮----
-task_updated = True
-⋮----
-# --- Find the next task to dispatch ---
-next_task_to_dispatch = None
-⋮----
-# First, check if an "execute_alone" task is currently InProgress.
-# If so, no other task can be dispatched.
-active_execute_alone_task_in_progress = False
-⋮----
-active_execute_alone_task_in_progress = True
-⋮----
-# Check dependencies
-dependencies = task.get("dependencies", [])
-dependencies_met = True
-⋮----
-dep_task_found = False
-⋮----
-dep_task_found = True
-⋮----
-dependencies_met = False
-⋮----
-task_is_execute_alone = task.get("execute_alone", False)
-can_dispatch_this_task = True
-⋮----
-# If this task is execute_alone, check if any *other* task is InProgress
-⋮----
-can_dispatch_this_task = False
-⋮----
-next_task_to_dispatch = task
-break # Found a ready task
-⋮----
-# If next_task_to_dispatch is found, no need to check further tasks in this iteration
-⋮----
-# --- Set next step based on findings ---
-updated_state_dict = state.copy()
-⋮----
-next_task_to_dispatch["status_live"] = "InProgress" # Mark as InProgress
-⋮----
-# Pass necessary details for codegen. For now, pass the whole task dict.
-# codegen_task_description could be task_def.get('description')
-# github_branch_name could be task_def.get('branch_name')
-⋮----
-updated_state_dict["codegen_task_description"] = next_task_to_dispatch.get("description") # For initiate_codegen_node
-⋮----
-# No more tasks marked "Todo" that are ready.
-# Check for overall completion or critical failures needing re-planning.
-all_successfully_completed = True
-critically_failed_task_to_replan = None
-⋮----
-task_status = task.get("status_live")
-⋮----
-critically_failed_task_to_replan = task # Prioritize re-planning critical failures
-all_successfully_completed = False # A critical failure means not all successful
-break # Found a critical failure, stop checking others for now
-⋮----
-all_successfully_completed = False
-# If any task is still Todo, InProgress, or non-critically failed, we are not done
-# and not necessarily in a re-plan state unless all those are blocked by a critical failure.
-# This break is removed so we check all tasks for a potential critical failure first.
-⋮----
-updated_state_dict["failed_task_details"] = critically_failed_task_to_replan # Send this task's details for re-planning
-# Add more context from processed_failure_details if available and relevant to this critically_failed_task
-# This assumes processed_failure_details corresponds to the *last* failure attempt of this task.
-# We might need to store last failure details directly within the task object in tasks_live.
-⋮----
-# No new task to dispatch, not all complete, and no critical failure identified for immediate re-plan.
-# This could mean tasks are still InProgress, or Todo but blocked (deadlock).
-⋮----
-# TODO: Implement deadlock detection. If deadlock, set orchestrator_next_step = "forward_failure_to_planner" with deadlock info.
-# For now, if tasks are still InProgress elsewhere (e.g. execute_alone), this state is fine.
-# If truly stuck (all Todo but none ready, and nothing InProgress), then it's an issue.
-is_any_task_in_progress = any(t.get("status_live") == "InProgress" for t in tasks_live)
-⋮----
-# For now, just end. A more robust solution would be to send to planner.
-# updated_state_dict["orchestrator_next_step"] = "forward_failure_to_planner"
-# updated_state_dict["failed_task_details"] = {"reason": "Deadlock detected in task orchestration"}
-updated_state_dict["orchestrator_next_step"] = "__end__" # Fallback
-⋮----
-# If an execute_alone task is running, orchestrator_next_step will be re-evaluated in next cycle.
-# If other tasks are InProgress, this path means we didn't find a new one to dispatch *additionally*.
-# The graph will loop back to task_orchestrator implicitly if no explicit goto is set by a Command from a node.
-# However, our orchestrator always sets orchestrator_next_step. So if it's not dispatch, not complete, not replan -> default to end for now.
-# This case might need to point back to itself if it's waiting for an InProgress task that is NOT execute_alone
-# For now, the existing __end__ fallback is okay. The key is the external graph loops back.
-updated_state_dict["orchestrator_next_step"] = "__end__" # Fallback for now
-⋮----
-# Clear processed task feedback from state
-⋮----
-# Persist changes to tasks_live in the state dictionary that will be returned
-⋮----
-def codegen_success_node(state: State) -> State
-⋮----
-success_message = f"Codegen task completed successfully. Result: {state.get('codegen_task_result')}"
-⋮----
-# Feedback for Orchestrator
-current_task_id = state.get("current_task_id")
-⋮----
-updated_state["processed_task_outcome"] = "SUCCESS" # Codegen itself was a success
-updated_state["processed_task_failure_details"] = None # Clear any previous failure details for this task stage
-⋮----
-def codegen_failure_node(state: State) -> State
-⋮----
-failure_message = f"Codegen task failed. Status: {state.get('codegen_task_status')}. Reason: {state.get('codegen_task_result')}"
-⋮----
-# Placeholder for a more sophisticated repo check
-def check_repo_status(repo_path: str | None = None) -> tuple[bool, str]: # Allow None, default to None
-⋮----
-"""Checks if the repo is empty and provides a summary."""
-⋮----
-# Try to list files. If only .git or very few files, consider it empty for this purpose.
-# A real implementation would be more robust.
-⋮----
-# Run 'git ls-files' to see tracked files. If it fails, repo might not exist or be initialized.
-# Redirect stderr to stdout to capture potential errors from git itself.
-process = os.popen(f'cd "{repo_path}" && git ls-files && git status --porcelain')
-output = process.read()
-exit_code = process.close()
-⋮----
-# No tracked files, likely empty or just initialized
-⋮----
-# Count files; this is a rough heuristic
-# For a more robust check, one might analyze file types, project structure files etc.
-file_count = len(output.strip().split('\n'))
-if file_count < 5: # Arbitrary threshold for "nearly empty"
-⋮----
-# === New Initial Context Node ===
-def initial_context_node(state: State, config: RunnableConfig) -> Command[Literal["coding_coordinator"]]
-⋮----
-"""Gathers initial context about the repository and Linear tasks before planning."""
-⋮----
-workspace_path = configurable.workspace_path # Assuming workspace_path is in config
-⋮----
-# Simulated Linear task check
-⋮----
-linear_task_exists_simulated = False # For a new (empty) repo, assume no existing Linear tasks
-⋮----
-# For existing repos, simulate randomly for now
-linear_task_exists_simulated = random.choice([True, False])
-⋮----
-simulated_linear_tasks = []
-if linear_task_exists_simulated: # This block will now only run if repo is not empty AND random choice was True
-simulated_linear_tasks = [
-linear_summary_str = f"Found {len(simulated_linear_tasks)} simulated Linear tasks for existing project."
-⋮----
-linear_summary_str = "No simulated Linear tasks found for this existing project."
-⋮----
-else: # repo_is_empty is True, so linear_task_exists_simulated is False
-linear_summary_str = "No Linear tasks found (new project)."
-⋮----
-project_summary_dict = {
-⋮----
-# Determine if it's an existing project
-is_existing_project = not repo_is_empty or linear_task_exists_simulated
-⋮----
-# initial_context_summary string can be built from the dict for logging or simple display
-initial_context_summary_str = f"Repository: {repo_summary}. Linear: {linear_summary_str}. Existing project: {is_existing_project}"
-⋮----
-"repo_is_empty": repo_is_empty, # Keep for direct access
-"linear_task_exists": linear_task_exists_simulated, # Keep for direct access
-"existing_project_summary": project_summary_dict, # New detailed dictionary
-"initial_context_summary": initial_context_summary_str, # Updated string summary
-⋮----
-# Add to messages so coordinator LLM sees it directly
-⋮----
-def human_prd_review_node(state: State) -> Command[Literal["coding_coordinator"]]
-⋮----
-"""Node to wait for user feedback on the PRD."""
-⋮----
-# Get the current PRD document to show to the user
-⋮----
-# Create a more user-friendly message based on the iteration
-⋮----
-interrupt_message = f"I see you want to create '{original_message}'. To help you better, I need more details about what you'd like to accomplish. For example:\n\n" + \
-⋮----
-interrupt_message = "Please review the current PRD. Provide feedback, or type 'approve' if it looks good, or 'research needed' if you'd like me to gather more information."
-⋮----
-# First, add a message to the state so the user sees it
-⋮----
-# Add a clear message from the agent to the user
-⋮----
-# Log that we're sending a message to the user
-⋮----
-# Interrupt the graph to wait for PRD feedback
-⋮----
-interrupt_value = InterruptValue(value=interrupt_message, ns=["human_prd_review"])
-prd_feedback = interrupt(interrupt_value)
-⋮----
-# Update the state with the feedback
-⋮----
-# Increment the PRD iteration counter
-⋮----
-# Add the user's feedback to the message history
-⋮----
-# === New Linear Integration Node ===
-def linear_integration_node(state: State, config: RunnableConfig) -> Command[Literal["task_orchestrator"]]: # Added config
-⋮----
-"""Integrates the PRD and task definitions with Linear by creating tasks.
-    Populates tasks_live with Linear IDs, URLs, and other task details.
-    """
-⋮----
-prd_document = state.get("prd_document") # May be useful for context or parent task
-tasks_definition = state.get("tasks_definition")
-tasks_live = []
-integration_messages = []
-⋮----
-# Fallback to simulation logic (simplified from original)
-⋮----
-sim_linear_id = f"SIMLIN-{random.randint(1000, 9999)}"
-task_live_item = {
-⋮----
-linear_service = LinearService(
-⋮----
-# Optionally, create a parent PRD/Epic task in Linear first if prd_document exists
-# prd_linear_task = None
-# if prd_document: # And maybe a flag like state.get("create_prd_linear_epic", False)
-#     try:
-#         prd_title = f"Project PRD: {state.get('project_name', 'Untitled Project')}"
-#         # Truncate PRD for description or use a summary
-#         prd_description = prd_document[:1500] + ("..." if len(prd_document) > 1500 else "")
-#         prd_linear_task = linear_service.create_task(title=prd_title, description=prd_description, is_epic=True) # Assuming an is_epic param or similar
-#         integration_messages.append(f"Created parent PRD task in Linear: {prd_linear_task.id} ({prd_linear_task.url})")
-#     except Exception as e_epic:
-#         logger.error(f"Failed to create parent PRD task in Linear: {e_epic}")
-#         integration_messages.append(f"Error creating parent PRD task in Linear: {e_epic}")
-⋮----
-task_title = task_def.get("name", f"Untitled Task {i+1}")
-task_description = task_def.get("description", "No description provided.")
-# TODO: Consider adding acceptance criteria to description or as sub-tasks if Linear supports
-# TODO: Handle task_def.get("dependencies") - Linear API might allow setting relations post-creation
-⋮----
-# Create the task in Linear
-linear_task = linear_service.create_task(
-⋮----
-# parent_id=prd_linear_task.id if prd_linear_task else None
-# Other fields like assignee, priority might be set here if available in task_def
-# and supported by linear_service.create_task
-⋮----
-**task_def, # Copy all fields from tasks_definition
-⋮----
-# status_live is already part of task_def, Linear starts new tasks in a default state
-⋮----
-# Add the task_def to tasks_live anyway, but without linear_id/url, or with error markers
-⋮----
-# Fallback: use tasks_definition as tasks_live but without Linear IDs
-⋮----
-tasks_live = [ {**td, "linear_integration_error": "Service init failed"} for td in tasks_definition]
-⋮----
-tasks_live = [] # Ensure it's an empty list if tasks_definition was also empty
-⋮----
-final_ai_message = "Linear Integration Summary:\n" + "\n".join(integration_messages)
-⋮----
-# === New Global Prompt for Coding Planner ===
-CODING_PLANNER_TASK_LIST_PROMPT = """You are an expert software architect. Your goal is to create a detailed, actionable task plan based on the provided Product Requirements Document (PRD).
+# This file is maintained for backward compatibility
+# It re-exports all functions from the nodes package
 </file>
 
 <file path="graph/types.py">
@@ -1786,58 +1740,77 @@ class State(MessagesState)
 ⋮----
 # Runtime Variables
 locale: str = "en-US"
-observations: list[str] = []
-plan_iterations: int = 0
-current_plan: Plan | str = None
-final_report: str = ""
-auto_accepted_plan: bool = False
-enable_background_investigation: bool = True
-background_investigation_results: str = None
-create_workspace: bool = False
-repo_path: str = None
+observations: Annotated[list[str], operator.add] = []
+plan_iterations: Annotated[int, operator.add] = 0
+current_plan: Annotated[Optional[Plan | str], None] = None # Explicitly LastValue
+final_report: Annotated[str, None] = "" # Explicitly LastValue
+auto_accepted_plan: Annotated[bool, operator.or_] = False
+enable_background_investigation: Annotated[bool, operator.or_] = True
+background_investigation_results: Annotated[Optional[str], None] = None # Explicitly LastValue
+create_workspace: Annotated[bool, operator.or_] = False
+repo_path: Annotated[Optional[str], None] = None # Explicitly LastValue
 ⋮----
 # --- GitHub specific state from previous iterations ---
-feature_branch_name: Optional[str] = None
-github_task_branches: Optional[Dict[int, str]] = None # Maps step number to task branch name
-github_action: Optional[str] = None # e.g., "create_feature_branch", "create_task_branch"
-feature_branch_description: Optional[str] = None
+feature_branch_name: Annotated[Optional[str], None] = None # Explicitly LastValue
+github_task_branches: Annotated[Optional[Dict[int, str]], None] = None  # Explicitly LastValue
+github_action: Annotated[Optional[str], None] = None  # Explicitly LastValue
+feature_branch_description: Annotated[Optional[str], None] = None # Explicitly LastValue
 ⋮----
 # --- Codegen specific state ---
-codegen_task_description: Optional[str] = None
-codegen_task_id: Optional[str] = None
-codegen_task_status: Optional[str] = None # PENDING, RUNNING, SUCCESS, FAILURE_CODING, FAILURE_REVIEW, TIMEOUT
-codegen_task_result: Optional[Any] = None # Could be code, error message, etc.
-codegen_poll_attempts: int = 0
+codegen_task_description: Annotated[Optional[str], None] = None # Explicitly LastValue
+codegen_task_id: Annotated[Optional[str], None] = None # Explicitly LastValue
+codegen_task_status: Annotated[Optional[str], None] = None # Explicitly LastValue
+codegen_task_result: Annotated[Optional[Any], None] = None # Explicitly LastValue
+codegen_poll_attempts: Annotated[int, operator.add] = 0
 ⋮----
 # --- Interrupt feedback ---
-interrupt_feedback: Optional[str] = None # General purpose feedback from an interrupt
+interrupt_feedback: Annotated[Optional[str], None] = None # Explicitly LastValue
+clarification_prompt_from_coordinator: Annotated[Optional[str], None] = None # Explicitly LastValue
 ⋮----
 # --- Initial Context ---
-initial_repo_check_done: bool = False
-repo_is_empty: bool = True # Default to true, initial_context_node will update
-linear_task_exists: bool = False # Default to false
-initial_context_summary: Optional[str] = None # Consider upgrading or replacing with existing_project_summary
+initial_repo_check_done: Annotated[bool, operator.or_] = False
+repo_is_empty: Annotated[bool, operator.or_] = True
+linear_task_exists: Annotated[bool, operator.or_] = False
+initial_context_summary: Annotated[Optional[str], None] = None # Explicitly LastValue
+# --- New fields for iterative initial context gathering ---
+pending_initial_context_query: Annotated[Optional[str], None] = None # Explicitly LastValue
+awaiting_initial_context_input: Annotated[bool, operator.or_] = False # Should allow updates if somehow set multiple times
+initial_context_approved: Annotated[bool, operator.or_] = False
+initial_context_iterations: Annotated[int, operator.add] = 0
+last_initial_context_feedback: Annotated[Optional[str], None] = None # Explicitly LastValue
+# --- End new fields ---
 ⋮----
 # --- Fields from PROJECT_PLAN.md Section II ---
-existing_project_summary: Optional[Dict] = None
-prd_document: Optional[str] = ""
-prd_review_feedback: Optional[str] = None
-prd_approved: bool = False
-prd_next_step: Optional[str] = None # Expected values: "human_prd_review", "context_gatherer", "coding_planner"
-research_results: Optional[Any] = None
-tasks_definition: Optional[List[Dict]] = None # Detailed plan from coding_planner
+existing_project_summary: Annotated[Optional[Dict], None] = None  # Explicitly LastValue
+prd_document: Annotated[Optional[str], None] = None # Explicitly LastValue
+prd_review_feedback: Annotated[Optional[str], None] = None # Explicitly LastValue
+prd_approved: Annotated[bool, operator.or_] = False # This was bool, changing to Annotated for safety
+prd_next_step: Annotated[Optional[str], None] = None # Explicitly LastValue
+research_results: Annotated[Optional[Any], None] = None # Explicitly LastValue
+tasks_definition: Annotated[Optional[List[Dict]], None] = None  # Explicitly LastValue
 # tasks_definition Task Dict: {id, description, dependencies: List[id], branch_name, status_in_plan, execute_alone, etc.}
-tasks_live: Optional[List[Dict]] = None # Tasks after Linear sync, with Linear IDs
+tasks_live: Annotated[Optional[List[Dict]], None] = None  # Explicitly LastValue
 # tasks_live Task Dict: {linear_id, github_branch, status_live, ...}
-current_task_id: Optional[str] = None # ID of the task currently being processed
-current_task_details: Optional[Dict] = None # Details of the current_task_id for codegen
-orchestrator_next_step: Optional[str] = None # Expected values: "dispatch_task_for_codegen", "forward_failure_to_planner", "all_tasks_complete"
-failed_task_details: Optional[Dict] = None # Info for planner if orchestrator escalates a failure
+current_task_id: Annotated[Optional[str], None] = None # Explicitly LastValue
+current_task_details: Annotated[Optional[Dict], None] = None # Explicitly LastValue
+orchestrator_next_step: Annotated[Optional[str], None] = None # Explicitly LastValue
+failed_task_details: Annotated[Optional[Dict], None] = None # Explicitly LastValue
 ⋮----
 # --- Task Completion/Failure Feedback for Orchestrator ---
-processed_task_id: Optional[str] = None
-processed_task_outcome: Optional[Literal["SUCCESS", "FAILURE"]] = None
-processed_task_failure_details: Optional[Dict] = None
+processed_task_id: Annotated[Optional[str], None] = None # Explicitly LastValue
+processed_task_outcome: Annotated[Optional[Literal["SUCCESS", "FAILURE"]], None] = None # Explicitly LastValue
+processed_task_failure_details: Annotated[Optional[Dict], None] = None # Explicitly LastValue
+⋮----
+# --- New fields for iterative PRD review ---
+pending_prd_review_query: Annotated[Optional[str], None] = None
+prd_review_iterations: Annotated[int, operator.add] = 0
+last_prd_feedback: Annotated[Optional[str], None] = None
+⋮----
+# --- New fields for iterative Plan review ---
+pending_plan_review_query: Annotated[Optional[str], None] = None
+plan_approved: Annotated[bool, operator.or_] = False # This was bool, changing to Annotated for safety
+plan_review_iterations: Annotated[int, operator.add] = 0
+last_plan_feedback: Annotated[Optional[str], None] = None
 ⋮----
 def get_current_human_message(state: State) -> Optional[BaseMessage]
 </file>
@@ -1846,34 +1819,65 @@ def get_current_human_message(state: State) -> Optional[BaseMessage]
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
 ⋮----
+# Optional dependencies - try to import, but gracefully handle missing
+⋮----
+from IPython.display import Image, display # type: ignore
+import matplotlib.pyplot as plt # type: ignore
+import networkx as nx # type: ignore
+VISUALIZATION_AVAILABLE = True
+⋮----
+VISUALIZATION_AVAILABLE = False
+⋮----
 logger = logging.getLogger(__name__)
 ⋮----
-"""Generates and saves a visualization of the LangGraph graph.
-
+def save_graph_visualization(graph, filename="graph_visualization.png")
+⋮----
+"""
+    Visualize the graph and save it to a file.
+    
     Args:
-        graph: The compiled LangGraph instance.
-        output_path: The path to save the visualization image.
-        draw_method: Method to use for drawing. 
-                     Supported: "mermaid.ink", "pyppeteer", "graphviz".
-                     "mermaid.ink" is used by default and requires no extra deps for PNG.
-                     "pyppeteer" requires pyppeteer and nest_asyncio.
-                     "graphviz" requires pygraphviz and its system dependencies.
+        graph: The compiled langgraph graph object
+        filename: The name of the output image file
+        
+    Returns:
+        None
     """
 ⋮----
-runnable_graph = graph.get_graph()
+# Get the NetworkX graph from the langgraph
+G = graph.get_graph().to_networkx()
 ⋮----
-method_enum = (
+# Create a figure with a reasonable size
 ⋮----
-# Ensure nest_asyncio is applied if using pyppeteer in a Jupyter-like environment
-# This might be needed if the environment blocks the asyncio event loop.
+# Use a layout that works well for workflow visualization
+pos = nx.spring_layout(G, k=0.5, iterations=50)
 ⋮----
-image_bytes = runnable_graph.draw_mermaid_png(draw_method=method_enum)
+# Draw the nodes
 ⋮----
-image_bytes = runnable_graph.draw_png()
+# Draw the edges
 ⋮----
-def get_graph_mermaid_syntax(graph) -> str | None
+# Add node labels
 ⋮----
-"""Returns the Mermaid syntax for the LangGraph graph."""
+# Add edge labels when available
+edge_labels = {}
+⋮----
+# Remove the axes
+⋮----
+# Save the figure
+⋮----
+def get_graph_mermaid_syntax(graph)
+⋮----
+"""
+    Generate Mermaid syntax for the graph.
+    
+    Args:
+        graph: The compiled langgraph graph object
+        
+    Returns:
+        str: Mermaid syntax for the graph
+    """
+⋮----
+# Extract Mermaid syntax directly from the graph
+mermaid_output = graph.get_graph(xray=True).draw_mermaid()
 </file>
 
 <file path="llms/__init__.py">
@@ -2411,6 +2415,84 @@ Your primary responsibilities are:
 - Ensure Linear tasks are created and updated appropriately.
 - Maintain the language of the user where possible.
 - When in doubt, ask the user for clarification on the coding task.
+</file>
+
+<file path="prompts/coding_planner_task_list.md">
+# === New Global Prompt for Coding Planner ===
+CODING_PLANNER_TASK_LIST_PROMPT = """You are an expert software architect. Your goal is to create a detailed, actionable task plan based on the provided Product Requirements Document (PRD).
+Consider the existing project context, conversation history, and any specific failed tasks that require re-planning.
+
+Inputs:
+- PRD: {prd_document}
+- Existing Project Summary: {existing_project_summary}
+- Conversation History (for context): {conversation_history}
+- Failed Task Details (for re-planning, if any): {failed_task_details_str}
+
+Your output MUST be a single JSON list of task objects. Do NOT include any text or markdown formatting outside of this JSON list.
+Each task object in the list MUST conform to the following structure:
+{{
+  "id": "string (globally unique task identifier, e.g., task_001)",
+  "name": "string (concise and descriptive name for the task)",
+  "description": "string (detailed explanation of what needs to be done for this task, including specific deliverables or outcomes)",
+  "dependencies": ["list of strings (IDs of other tasks this task depends on, empty if none)"],
+  "acceptance_criteria": ["list of strings (specific, measurable criteria for task completion)"],
+  "estimated_effort_hours": "integer (optional, estimated hours to complete the task, e.g., 4)",
+  "assignee_suggestion": "string (optional, suggested role or type of assignee, e.g., frontend_dev, backend_dev, any)",
+  "status_live": "string (initial status, should usually be 'Todo')",
+  "execute_alone": "boolean (true if this task must be executed alone without other parallel tasks, default false)",
+  "max_retries": "integer (how many times this task should be retried on failure, e.g., 1)",
+  "suggested_branch_name": "string (optional, a suggested Git branch name for this task, e.g., task/setup-database-schema)",
+  "planner_status_suggestion": "string (optional, your internal status suggestion for this task in the plan, e.g., todo, needs_clarification)"
+}}
+
+Example of the expected JSON list output:
+```json
+[
+  {{
+    "id": "task_001",
+    "name": "Setup Database Schema",
+    "description": "Define and implement the initial database schema based on Appendix A of the PRD. Include tables for Users, Products, and Orders.",
+    "dependencies": [],
+    "acceptance_criteria": [
+      "Users table created with all specified fields.",
+      "Products table created with all specified fields.",
+      "Orders table created with all specified fields and foreign keys."
+    ],
+    "estimated_effort_hours": 3,
+    "assignee_suggestion": "backend_dev",
+    "status_live": "Todo",
+    "execute_alone": false,
+    "max_retries": 1,
+    "suggested_branch_name": "task/setup-db-schema",
+    "planner_status_suggestion": "todo"
+  }},
+  {{
+    "id": "task_002",
+    "name": "Implement User Authentication API",
+    "description": "Develop API endpoints for user registration, login, and logout. Refer to PRD section 3.2 for requirements.",
+    "dependencies": ["task_001"],
+    "acceptance_criteria": [
+      "POST /register endpoint works as specified.",
+      "POST /login endpoint authenticates users and returns a token.",
+      "POST /logout endpoint invalidates user session."
+    ],
+    "estimated_effort_hours": 5,
+    "assignee_suggestion": "backend_dev",
+    "status_live": "Todo",
+    "execute_alone": false,
+    "max_retries": 1,
+    "suggested_branch_name": "task/user-auth-api",
+    "planner_status_suggestion": "todo"
+  }}
+]
+```
+
+Ensure all task IDs are unique within the generated plan.
+Focus on breaking down the PRD into actionable development tasks that can be implemented and tested.
+If re-planning due to a failed task ({failed_task_details_str}), integrate the necessary revisions smoothly, focusing on the failed task and its direct dependents or prerequisites. You may need to modify existing tasks, add new ones, or remove obsolete ones related to the failure.
+
+Now, generate the JSON task list.
+"""
 </file>
 
 <file path="prompts/coding_planner.md">
@@ -3115,6 +3197,208 @@ command: str = ""
 output: str = ""
 </file>
 
+<file path="server/routes/__init__.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+# from .podcast import register_podcast_routes # Removed
+# from .ppt import register_ppt_routes # Removed
+# from .prose import register_prose_routes # Removed
+⋮----
+def register_all_routes(app: FastAPI)
+⋮----
+"""Register all routes with the FastAPI app."""
+⋮----
+# register_podcast_routes(app) # Removed
+# register_ppt_routes(app) # Removed
+# register_prose_routes(app) # Removed
+</file>
+
+<file path="server/routes/chat.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+logger = logging.getLogger(__name__)
+⋮----
+def register_chat_routes(app: FastAPI)
+⋮----
+"""Register chat-related routes with the FastAPI app."""
+⋮----
+@app.post("/api/chat/stream")
+    async def chat_stream(request: ChatRequest)
+⋮----
+thread_id = request.thread_id
+⋮----
+thread_id = str(uuid4())
+⋮----
+# Ensure messages is not None, pass the list of ChatMessage objects
+input_messages = request.messages if request.messages is not None else []
+⋮----
+input_messages, # Pass the list of ChatMessage objects
+⋮----
+"""Generate a stream of events from the workflow."""
+# Convert messages to the format expected by the graph
+converted_messages = []
+⋮----
+# Build the graph with memory
+graph = build_graph_with_memory()
+⋮----
+# Prepare the config
+config = {
+⋮----
+# Prepare the input
+input_data = {
+⋮----
+# Add feedback if provided
+⋮----
+# Stream the events
+⋮----
+# Use stream_mode='updates' to get state diffs, or 'values' for full state.
+# 'debug' provides the most comprehensive info including state.
+stream = graph.astream_events(input_data, config=config, stream_mode="updates")
+⋮----
+event_type = event["event"]
+event_data = event["data"]
+event_name = event.get("name", "") # Node name for some events
+⋮----
+# Log the raw event for debugging if needed
+# logger.debug(f"Raw event: {event}")
+⋮----
+chunk = event_data.get("chunk")
+⋮----
+output = event_data.get("output")
+⋮----
+elif event_type == "on_chain_end": # This event often contains final state or node outputs
+current_state_values = None
+⋮----
+current_state_values = event_data["output"]["values"]
+elif isinstance(event_data, dict) and "values" in event_data: # For stream_mode="values" on graph directly
+current_state_values = event_data["values"]
+⋮----
+# Check for initial context query
+⋮----
+query_content = current_state_values["pending_initial_context_query"]
+⋮----
+return # Stop the generator, graph will resume on next request with feedback
+# Check for PRD review query
+⋮----
+query_content = current_state_values["pending_prd_review_query"]
+⋮----
+return # Stop the generator
+# Check for Plan review query
+⋮----
+query_content = current_state_values["pending_plan_review_query"]
+⋮----
+else: # Fallback or other chain_end events
+output_data = event_data.get("output", {})
+⋮----
+# If the output is a Command object, don't try to serialize it directly.
+# This usually means LangGraph is handling it internally.
+# We can log it for debugging or decide if parts of it should be sent.
+⋮----
+# Optionally, decide if you want to send a placeholder or parts of the command if safe
+# For now, let's just skip sending this specific problematic event or send a marker
+⋮----
+# Sanitize output_data if it contains message objects
+sanitized_output_data = _sanitize_message_objects(output_data)
+⋮----
+sanitized_output_data = sanitized_output_data.copy()
+⋮----
+def _make_event_sse(event_type: str, data: dict) -> str
+⋮----
+"""Helper to format SSE data."""
+⋮----
+def _sanitize_message_objects(data: Any) -> Any
+⋮----
+"""Recursively sanitize BaseMessage objects into serializable dicts."""
+⋮----
+# Basic serialization for BaseMessage; can be expanded
+⋮----
+async def _test_streaming()
+⋮----
+# Placeholder for actual test logic
+⋮----
+# Example of how you might call the generator for testing:
+# async for event_str in _astream_workflow_generator(
+#     messages=[ChatMessage(role="user", content="Hello")],
+#     thread_id="test_thread",
+#     # ... other params ...
+# ):
+#     print(event_str, end="")
+</file>
+
+<file path="server/routes/mcp.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+logger = logging.getLogger(__name__)
+⋮----
+def register_mcp_routes(app: FastAPI)
+⋮----
+"""Register MCP-related routes with the FastAPI app."""
+⋮----
+@app.post("/api/mcp/server/metadata", response_model=MCPServerMetadataResponse)
+    async def mcp_server_metadata(request: MCPServerMetadataRequest)
+⋮----
+"""Get information about an MCP server."""
+⋮----
+# Set default timeout with a longer value for this endpoint
+timeout = 300  # Default to 300 seconds for this endpoint
+⋮----
+# Use custom timeout from request if provided
+⋮----
+timeout = request.timeout_seconds
+⋮----
+# Create MCP client
+client = MultiServerMCPClient(
+⋮----
+# Get server metadata
+metadata = client.get_server_metadata()
+⋮----
+# Return the metadata
+⋮----
+@app.post("/api/mcp/execute", response_model=MCPExecuteResponse)
+    async def mcp_execute(request: MCPExecuteRequest)
+⋮----
+"""Execute code on an MCP server."""
+⋮----
+# Set default timeout
+timeout = request.timeout_seconds or 60
+⋮----
+# Execute the code
+result = client.execute(
+⋮----
+# Return the result
+</file>
+
+<file path="server/routes/tts.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+logger = logging.getLogger(__name__)
+⋮----
+def register_tts_routes(app: FastAPI)
+⋮----
+"""Register TTS-related routes with the FastAPI app."""
+⋮----
+@app.post("/api/tts")
+    async def text_to_speech(request: TTSRequest)
+⋮----
+"""Convert text to speech using volcengine TTS API."""
+⋮----
+app_id = os.getenv("VOLCENGINE_TTS_APPID", "")
+⋮----
+access_token = os.getenv("VOLCENGINE_TTS_ACCESS_TOKEN", "")
+⋮----
+tts = VolcengineTTS(app_id=app_id, access_token=access_token)
+audio_data = tts.synthesize(
+⋮----
+# Return base64-encoded audio data
+base64_audio = base64.b64encode(audio_data).decode("utf-8")
+⋮----
+# Return raw audio data
+</file>
+
 <file path="server/__init__.py">
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
@@ -3126,149 +3410,28 @@ __all__ = ["app"]
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
 ⋮----
+# Configure logging
+⋮----
 logger = logging.getLogger(__name__)
 ⋮----
+# Create the FastAPI app
 app = FastAPI(
 ⋮----
 # Add CORS middleware
 ⋮----
-allow_origins=["*"],  # Allows all origins
+allow_origins=["*"],  # Allow all origins
 ⋮----
-allow_methods=["*"],  # Allows all methods
-allow_headers=["*"],  # Allows all headers
+allow_methods=["*"],  # Allow all methods
+allow_headers=["*"],  # Allow all headers
 ⋮----
-graph = build_graph_with_memory()
+# Register all routes
 ⋮----
-@app.post("/api/chat/stream")
-async def chat_stream(request: ChatRequest)
+# Add a health check endpoint
 ⋮----
-thread_id = request.thread_id
+@app.get("/health")
+async def health_check()
 ⋮----
-thread_id = str(uuid4())
-⋮----
-input_ = {
-⋮----
-# Add repository information if provided
-⋮----
-resume_msg = f"[{interrupt_feedback}]"
-# add the last message to the resume message
-⋮----
-input_ = Command(resume=resume_msg)
-⋮----
-interrupt_info = event_data["__interrupt__"]
-logger.info(f"Interrupt data received: {interrupt_info}") # Log the interrupt data
-⋮----
-interrupt_node_id = "unknown_interrupt_node" # Default ID
-interrupt_content = "An interruption has occurred." # Default content
-options = [] # Default no options
-⋮----
-# Attempt to get specific details if available
-first_interrupt_item = interrupt_info[0]
-⋮----
-# Extract namespace (node ID)
-⋮----
-interrupt_node_id = first_interrupt_item.ns[0]
-⋮----
-# Extract value (message content)
-⋮----
-interrupt_content = first_interrupt_item.value
-⋮----
-# TODO: Dynamically set options based on the interrupting node (e.g., interrupt_node_id)
-# For now, keeping generic options for PRD review as a fallback
-⋮----
-options = [
-⋮----
-else: # Fallback generic options
-⋮----
-# First, send a regular message with the interrupt content
-# Use a unique ID for the message to ensure it's displayed
-message_id = f"msg-{interrupt_node_id}-{random.randint(1000, 9999)}"
-⋮----
-"finish_reason": "stop",  # Mark as complete so it displays properly
-⋮----
-# Add a small delay to ensure the message is processed before the interrupt
-⋮----
-# Then send the interrupt event with a different ID
-interrupt_event_id = f"{interrupt_node_id}-{random.randint(1000, 9999)}"
-⋮----
-"content": "Please provide your feedback:",  # Shorter content for the interrupt itself
-⋮----
-event_stream_message: dict[str, any] = {
-⋮----
-# Tool Message - Return the result of the tool call
-⋮----
-# AI Message - Raw message tokens
-⋮----
-# AI Message - Tool Call
-⋮----
-# AI Message - Tool Call Chunks
-⋮----
-# AI Message - Raw message tokens
-⋮----
-def _make_event(event_type: str, data: dict[str, any])
-⋮----
-@app.post("/api/tts")
-async def text_to_speech(request: TTSRequest)
-⋮----
-"""Convert text to speech using volcengine TTS API."""
-⋮----
-app_id = os.getenv("VOLCENGINE_TTS_APPID", "")
-⋮----
-access_token = os.getenv("VOLCENGINE_TTS_ACCESS_TOKEN", "")
-⋮----
-cluster = os.getenv("VOLCENGINE_TTS_CLUSTER", "volcano_tts")
-voice_type = os.getenv("VOLCENGINE_TTS_VOICE_TYPE", "BV700_V2_streaming")
-⋮----
-tts_client = VolcengineTTS(
-# Call the TTS API
-result = tts_client.text_to_speech(
-⋮----
-# Decode the base64 audio data
-audio_data = base64.b64decode(result["audio_data"])
-⋮----
-# Return the audio file
-⋮----
-@app.post("/api/podcast/generate")
-async def generate_podcast(request: GeneratePodcastRequest)
-⋮----
-report_content = request.content
-⋮----
-workflow = build_podcast_graph()
-final_state = workflow.invoke({"input": report_content})
-audio_bytes = final_state["output"]
-⋮----
-@app.post("/api/ppt/generate")
-async def generate_ppt(request: GeneratePPTRequest)
-⋮----
-workflow = build_ppt_graph()
-⋮----
-generated_file_path = final_state["generated_file_path"]
-⋮----
-ppt_bytes = f.read()
-⋮----
-@app.post("/api/prose/generate")
-async def generate_prose(request: GenerateProseRequest)
-⋮----
-workflow = build_prose_graph()
-events = workflow.astream(
-⋮----
-@app.post("/api/mcp/server/metadata", response_model=MCPServerMetadataResponse)
-async def mcp_server_metadata(request: MCPServerMetadataRequest)
-⋮----
-"""Get information about an MCP server."""
-⋮----
-# Set default timeout with a longer value for this endpoint
-timeout = 300  # Default to 300 seconds for this endpoint
-⋮----
-# Use custom timeout from request if provided
-⋮----
-timeout = request.timeout_seconds
-⋮----
-# Load tools from the MCP server using the utility function
-tools = await load_mcp_tools(
-⋮----
-# Create the response with tools
-response = MCPServerMetadataResponse(
+"""Health check endpoint."""
 </file>
 
 <file path="server/chat_request.py">
@@ -3307,6 +3470,8 @@ enable_background_investigation: Optional[bool] = Field(
 force_interactive: Optional[bool] = Field(
 repository: Optional[RepositoryInfo] = Field(
 create_workspace: Optional[bool] = Field(
+user_feedback_payload: Optional[Dict[str, Any]] = Field(
+locale: Optional[str] = Field(
 ⋮----
 class TTSRequest(BaseModel)
 ⋮----
@@ -3333,6 +3498,34 @@ class GenerateProseRequest(BaseModel)
 prompt: str = Field(..., description="The content of the prose")
 option: str = Field(..., description="The option of the prose writer")
 command: Optional[str] = Field(
+</file>
+
+<file path="server/mcp_models.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+class MCPServerMetadataRequest(BaseModel)
+⋮----
+server_url: str = Field(..., description="The URL of the MCP server.")
+api_key: Optional[str] = Field(None, description="Optional API key for the MCP server.")
+timeout_seconds: Optional[int] = Field(None, description="Optional timeout in seconds for the request.")
+⋮----
+class MCPServerMetadataResponse(BaseModel)
+⋮----
+metadata: Dict[str, Any] = Field(..., description="The metadata returned by the MCP server.")
+tools: List = Field(..., description="The tools available on the MCP server.")
+⋮----
+class MCPExecuteRequest(BaseModel)
+⋮----
+timeout_seconds: Optional[int] = Field(60, description="Optional timeout in seconds for the execution.")
+code: str = Field(..., description="The code to execute on the MCP server.")
+language: str = Field(..., description="The language of the code.")
+working_directory: Optional[str] = Field(None, description="Optional working directory for execution.")
+environment_variables: Optional[Dict[str, str]] = Field(None, description="Optional environment variables for execution.")
+⋮----
+class MCPExecuteResponse(BaseModel)
+⋮----
+result: Any = Field(..., description="The result of the code execution from the MCP server.")
 </file>
 
 <file path="server/mcp_request.py">
@@ -3407,6 +3600,189 @@ server_params = StdioServerParameters(
 command=command,  # Executable
 args=args,  # Optional command line arguments
 env=env,  # Optional environment variables
+</file>
+
+<file path="tools/linear/__init__.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+# Re-export all classes from the modules for backward compatibility
+</file>
+
+<file path="tools/linear/project.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+@dataclass
+class LinearProject
+⋮----
+"""Representation of a project in Linear."""
+id: str
+name: str
+description: str
+state: str
+team_ids: List[str]
+created_at: Optional[str] = None
+updated_at: Optional[str] = None
+start_date: Optional[str] = None
+target_date: Optional[str] = None
+completed_at: Optional[str] = None
+completed: bool = False
+⋮----
+def to_dict(self) -> Dict[str, Any]
+⋮----
+"""Convert the project to a dictionary."""
+</file>
+
+<file path="tools/linear/service.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+logger = logging.getLogger(__name__)
+⋮----
+class LinearService
+⋮----
+"""Service for interacting with the Linear API."""
+⋮----
+def __init__(self, api_key: str = None, team_id: Optional[str] = None)
+⋮----
+"""Initialize the Linear service.
+        
+        Args:
+            api_key: The Linear API key. If not provided, will try to get from environment.
+            team_id: The default team ID to use for operations.
+        """
+⋮----
+"""Create a task in Linear.
+        
+        Args:
+            title: The title of the task.
+            description: The description of the task.
+            team_id: The ID of the team to create the task in. Defaults to the service's team_id.
+            assignee_id: The ID of the user to assign the task to.
+            priority: The priority of the task (0-4).
+            parent_id: The ID of the parent task (epic).
+            project_id: The ID of the project to add the task to.
+            labels: A list of label IDs to add to the task.
+            
+        Returns:
+            The created task.
+        """
+⋮----
+team_id = team_id or self.team_id
+⋮----
+# Prepare the mutation
+mutation = """
+⋮----
+# Prepare the variables
+variables = {
+⋮----
+# Make the request
+response = requests.post(
+⋮----
+# Check for errors
+⋮----
+data = response.json()
+⋮----
+# Extract the task data
+issue_data = data["data"]["issueCreate"]["issue"]
+⋮----
+# Create and return the task
+⋮----
+def update_task(self, task_id: str, updates: Dict[str, Any]) -> LinearTask
+⋮----
+"""Update a task in Linear.
+        
+        Args:
+            task_id: The ID of the task to update.
+            updates: A dictionary of updates to apply to the task.
+            
+        Returns:
+            The updated task.
+        """
+⋮----
+issue_data = data["data"]["issueUpdate"]["issue"]
+⋮----
+def update_task_with_github_info(self, task_id: str, branch_name: str, pr_url: Optional[str] = None) -> LinearTask
+⋮----
+"""Update a task with GitHub information.
+        
+        Args:
+            task_id: The ID of the task to update.
+            branch_name: The name of the branch.
+            pr_url: The URL of the pull request.
+            
+        Returns:
+            The updated task.
+        """
+updates = {
+⋮----
+def get_task(self, task_id: str) -> LinearTask
+⋮----
+"""Get a task from Linear.
+        
+        Args:
+            task_id: The ID of the task to get.
+            
+        Returns:
+            The task.
+        """
+⋮----
+# Prepare the query
+query = """
+⋮----
+issue_data = data["data"]["issue"]
+⋮----
+"""Create a project in Linear.
+        
+        Args:
+            name: The name of the project.
+            description: The description of the project.
+            team_ids: The IDs of the teams to add to the project.
+            start_date: The start date of the project (ISO format).
+            target_date: The target date of the project (ISO format).
+            
+        Returns:
+            The created project.
+        """
+⋮----
+team_ids = team_ids or [self.team_id] if self.team_id else []
+⋮----
+# Extract the project data
+project_data = data["data"]["projectCreate"]["project"]
+⋮----
+# Create and return the project
+</file>
+
+<file path="tools/linear/task.py">
+# Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+# SPDX-License-Identifier: MIT
+⋮----
+@dataclass
+class LinearTask
+⋮----
+"""Representation of a task in Linear."""
+id: str
+title: str
+description: str
+state: str
+assignee_id: Optional[str] = None
+team_id: Optional[str] = None
+priority: Optional[int] = None
+branch_name: Optional[str] = None
+github_pr_url: Optional[str] = None
+parent_id: Optional[str] = None  # ID of parent issue (epic)
+completed: bool = False
+created_at: Optional[str] = None
+updated_at: Optional[str] = None
+labels: List[str] = None
+project_id: Optional[str] = None
+⋮----
+def __post_init__(self)
+⋮----
+def to_dict(self) -> Dict[str, Any]
+⋮----
+"""Convert the task to a dictionary."""
 </file>
 
 <file path="tools/tavily_search/__init__.py">
@@ -3925,309 +4301,8 @@ latest_status = statuses[0].state
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
 ⋮----
-logger = logging.getLogger(__name__)
-⋮----
-@dataclass
-class LinearTask
-⋮----
-"""Representation of a task in Linear."""
-id: str
-title: str
-description: str
-state: str
-assignee_id: Optional[str] = None
-team_id: Optional[str] = None
-priority: Optional[int] = None
-branch_name: Optional[str] = None
-github_pr_url: Optional[str] = None
-parent_id: Optional[str] = None  # ID of parent issue (epic)
-completed: bool = False
-created_at: Optional[str] = None
-updated_at: Optional[str] = None
-labels: List[str] = None
-project_id: Optional[str] = None
-⋮----
-def __post_init__(self)
-⋮----
-@dataclass
-class LinearProject
-⋮----
-"""Representation of a project in Linear."""
-⋮----
-name: str
-⋮----
-team_ids: List[str]
-⋮----
-start_date: Optional[str] = None
-target_date: Optional[str] = None
-completed_at: Optional[str] = None
-⋮----
-class LinearService
-⋮----
-"""Service for interacting with Linear API."""
-⋮----
-def __init__(self, api_key: str, team_id: Optional[str] = None)
-⋮----
-"""Initialize the Linear service.
-
-        Args:
-            api_key: Linear API key
-            team_id: Optional default team ID
-        """
-⋮----
-def execute_query(self, query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
-⋮----
-"""Execute a GraphQL query against the Linear API.
-
-            Args:
-                query: GraphQL query string
-                variables: Optional variables for the query
-
-            Returns:
-                Response data from Linear API
-            """
-payload = {"query": query}
-⋮----
-response = requests.post(
-⋮----
-# Return a default response instead of raising an exception
-⋮----
-"""Create a new task in Linear.
-
-        Args:
-            title: Task title
-            description: Task description
-            team_id: Team ID (uses default if not provided)
-            assignee_id: User ID to assign the task to
-            priority: Task priority (0-4)
-
-        Returns:
-            Created LinearTask object
-        """
-team_id = team_id or self.team_id
-⋮----
-query = """
-⋮----
-variables = {
-⋮----
-result = self.execute_query(query, variables)
-⋮----
-issue_data = result["data"]["issueCreate"]["issue"]
-⋮----
-error = result.get("errors", [{"message": "Unknown error"}])[0]["message"]
-⋮----
-def update_task(self, task_id: str, updates: Dict[str, Any]) -> LinearTask
-⋮----
-"""Update an existing task in Linear.
-
-        Args:
-            task_id: ID of the task to update
-            updates: Dictionary of fields to update
-
-        Returns:
-            Updated LinearTask object
-        """
-⋮----
-issue_data = result["data"]["issueUpdate"]["issue"]
-⋮----
-def update_task_with_github_info(self, task_id: str, branch_name: str, pr_url: Optional[str] = None) -> LinearTask
-⋮----
-"""Update a Linear task with GitHub branch and PR information.
-
-        Args:
-            task_id: ID of the task to update
-            branch_name: GitHub branch name
-            pr_url: Optional GitHub PR URL
-
-        Returns:
-            Updated LinearTask object
-        """
-# First, get the current task to preserve existing data
-task = self.get_task(task_id)
-⋮----
-# Update description to include GitHub info
-description = task.description or ""
-⋮----
-# Add GitHub branch info if not already present
-⋮----
-# Add or update PR info if provided
-⋮----
-# Replace existing PR info
-lines = description.split("\n")
-⋮----
-description = "\n".join(lines)
-⋮----
-# Update the task
-updates = {
-⋮----
-def get_task(self, task_id: str) -> LinearTask
-⋮----
-"""Get a task from Linear by ID.
-
-        Args:
-            task_id: ID of the task to retrieve
-
-        Returns:
-            LinearTask object
-        """
-⋮----
-issue_data = result["data"]["issue"]
-⋮----
-# Extract labels
-labels = []
-⋮----
-labels = [label["name"] for label in issue_data["labels"]["nodes"]]
-⋮----
-error = result.get("errors", [{"message": "Task not found"}])[0]["message"]
-⋮----
-def get_team_tasks(self, team_id: Optional[str] = None, include_completed: bool = False) -> List[LinearTask]
-⋮----
-"""Get all tasks for a team.
-
-        Args:
-            team_id: Team ID (uses default if not provided)
-            include_completed: Whether to include completed tasks
-
-        Returns:
-            List of LinearTask objects
-        """
-⋮----
-variables = {}
-⋮----
-tasks = []
-⋮----
-# Find the team with the matching ID
-⋮----
-# Extract labels
-⋮----
-task = LinearTask(
-⋮----
-# Return empty list instead of raising an exception
-⋮----
-def get_epics(self, team_id: Optional[str] = None) -> List[LinearTask]
-⋮----
-"""Get all epics for a team.
-
-        Args:
-            team_id: Team ID (uses default if not provided)
-
-        Returns:
-            List of LinearTask objects representing epics
-        """
-⋮----
-epics = []
-⋮----
-# Extract labels
-⋮----
-epic = LinearTask(
-⋮----
-def get_epic_tasks(self, epic_id: str) -> List[LinearTask]
-⋮----
-"""Get all tasks for an epic.
-
-        Args:
-            epic_id: Epic ID
-
-        Returns:
-            List of LinearTask objects
-        """
-⋮----
-def get_projects(self, team_id: Optional[str] = None) -> List[LinearProject]
-⋮----
-"""Get all projects for a team.
-
-        Args:
-            team_id: Team ID (uses default if not provided)
-
-        Returns:
-            List of LinearProject objects
-        """
-⋮----
-projects = []
-⋮----
-# Extract team IDs
-team_ids = []
-⋮----
-team_ids = [team["id"] for team in project_data["teams"]["nodes"]]
-⋮----
-project = LinearProject(
-⋮----
-def get_project_by_name(self, project_name: str, team_id: Optional[str] = None) -> Optional[LinearProject]
-⋮----
-"""Get a project by name.
-
-        Args:
-            project_name: Name of the project to find
-            team_id: Team ID (uses default if not provided)
-
-        Returns:
-            LinearProject object if found, None otherwise
-        """
-⋮----
-projects = self.get_projects(team_id)
-⋮----
-def create_project(self, name: str, description: str = "", team_id: Optional[str] = None) -> LinearProject
-⋮----
-"""Create a new project in Linear.
-
-        Args:
-            name: Project name
-            description: Project description
-            team_id: Team ID (uses default if not provided)
-
-        Returns:
-            Created LinearProject object
-        """
-⋮----
-# Create a dummy project for testing
-⋮----
-project_data = result["data"]["projectCreate"]["project"]
-⋮----
-# Extract team IDs
-⋮----
-error = "Unknown error"
-⋮----
-error = result["errors"][0].get("message", "Unknown error")
-⋮----
-# Create a dummy project for testing
-⋮----
-def filter_or_create_project(self, project_name: str, description: str = "", team_id: Optional[str] = None) -> LinearProject
-⋮----
-"""Filter for a project by name and create it if it doesn't exist.
-
-        Args:
-            project_name: Name of the project to find or create
-            description: Description for the project if it needs to be created
-            team_id: Team ID (uses default if not provided)
-
-        Returns:
-            LinearProject object
-        """
-⋮----
-# Try to find the project first
-project = self.get_project_by_name(project_name, team_id)
-⋮----
-# If project doesn't exist, create it
-⋮----
-project = self.create_project(project_name, description, team_id)
-⋮----
-# Create a dummy project as a fallback
-⋮----
-def add_task_to_project(self, task_id: str, project_id: str) -> LinearTask
-⋮----
-"""Add a task to a project.
-
-        Args:
-            task_id: ID of the task to update
-            project_id: ID of the project to add the task to
-
-        Returns:
-            Updated LinearTask object
-        """
-⋮----
-# Get the task and return it with the project ID set
-⋮----
-# Return a dummy task
+# This file is maintained for backward compatibility
+# It re-exports the classes from the linear package
 </file>
 
 <file path="tools/python_repl.py">
@@ -4781,8 +4856,7 @@ def enable_debug_logging()
 ⋮----
 logger = logging.getLogger(__name__)
 ⋮----
-# Create the graph
-graph = build_graph()
+# Don't create a global graph instance - create it on demand per run
 ⋮----
 """Run the agent workflow asynchronously with the given user input.
 
@@ -4799,6 +4873,11 @@ graph = build_graph()
         The final state after the workflow completes
     """
 ⋮----
+# Create a fresh graph instance for this run
+graph = build_graph()
+⋮----
+# Print the graph's Mermaid diagram for debugging
+⋮----
 initial_state = {
 ⋮----
 # Runtime Variables
@@ -4810,6 +4889,12 @@ last_message_cnt = len(s["messages"])
 message = s["messages"][-1]
 ⋮----
 # For any other output format
+⋮----
+# Import after removing global graph instance
+⋮----
+# Create a graph just for visualization
+⋮----
+# Visualize and print Mermaid diagram
 </file>
 
 </files>

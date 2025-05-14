@@ -49,40 +49,46 @@ export const useRepositoryStore = create<RepositoryState>(() => ({
 
 // Load repositories from localStorage
 export function loadRepositories() {
-  try {
-    const storedData = localStorage.getItem(REPOSITORIES_KEY);
-    if (storedData) {
-      const parsed = JSON.parse(storedData);
+  // Check if running in a browser environment
+  if (typeof window !== 'undefined') {
+    try {
+      const storedData = localStorage.getItem(REPOSITORIES_KEY);
+      if (storedData) {
+        const parsed = JSON.parse(storedData);
 
-      // Convert string dates back to Date objects
-      const repositories = parsed.repositories.map((repo: StoredRepository) => ({
-        ...repo,
-        lastUsed: new Date(repo.lastUsed),
-      }));
+        // Convert string dates back to Date objects
+        const repositories = parsed.repositories.map((repo: StoredRepository) => ({
+          ...repo,
+          lastUsed: new Date(repo.lastUsed),
+        }));
 
-      useRepositoryStore.setState({
-        repositories,
-        currentRepository: parsed.currentRepository ? {
-          ...parsed.currentRepository,
-          lastUsed: new Date(parsed.currentRepository.lastUsed),
-        } : null,
-      });
+        useRepositoryStore.setState({
+          repositories,
+          currentRepository: parsed.currentRepository ? {
+            ...parsed.currentRepository,
+            lastUsed: new Date(parsed.currentRepository.lastUsed),
+          } : null,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load repositories from localStorage:", error);
     }
-  } catch (error) {
-    console.error("Failed to load repositories from localStorage:", error);
   }
 }
 
 // Save repositories to localStorage
 export function saveRepositories() {
-  try {
-    const { repositories, currentRepository } = useRepositoryStore.getState();
-    localStorage.setItem(
-      REPOSITORIES_KEY,
-      JSON.stringify({ repositories, currentRepository })
-    );
-  } catch (error) {
-    console.error("Failed to save repositories to localStorage:", error);
+  // Check if running in a browser environment
+  if (typeof window !== 'undefined') {
+    try {
+      const { repositories, currentRepository } = useRepositoryStore.getState();
+      localStorage.setItem(
+        REPOSITORIES_KEY,
+        JSON.stringify({ repositories, currentRepository })
+      );
+    } catch (error) {
+      console.error("Failed to save repositories to localStorage:", error);
+    }
   }
 }
 

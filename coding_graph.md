@@ -15,6 +15,7 @@ graph TD;
 	coding_planner(coding_planner)
 	human_feedback_plan(human_feedback_plan)
 	linear_integration(linear_integration)
+	human_plan_review(human_plan_review)
 	task_orchestrator(task_orchestrator)
 	initiate_codegen(initiate_codegen)
 	poll_codegen_status(poll_codegen_status)
@@ -33,6 +34,7 @@ graph TD;
 	initial_context --> human_initial_context_review;
 	initiate_codegen --> poll_codegen_status;
 	linear_integration --> task_orchestrator;
+	human_plan_review --> linear_integration;
 	researcher___end__ --> research_team;
 	coding_coordinator -.-> human_prd_review;
 	coding_coordinator -.-> context_gatherer;
@@ -43,7 +45,7 @@ graph TD;
 	research_team -.-> coding_planner;
 	research_team -.-> task_orchestrator;
 	human_feedback_plan -. &nbsp;revise&nbsp; .-> coding_planner;
-	human_feedback_plan -. &nbsp;accept&nbsp; .-> linear_integration;
+	human_feedback_plan -. &nbsp;accept&nbsp; .-> human_plan_review;
 	task_orchestrator -.-> initiate_codegen;
 	task_orchestrator -.-> coding_planner;
 	task_orchestrator -.-> __end__;
@@ -67,6 +69,7 @@ graph TD;
 	coding_planner -.-> __end__;
 	human_feedback_plan -.-> coding_planner;
 	human_feedback_plan -.-> linear_integration;
+	human_plan_review -.-> linear_integration;
 	linear_integration -.-> task_orchestrator;
 	github_manager -.-> task_orchestrator;
 	github_manager -.-> coding_planner;

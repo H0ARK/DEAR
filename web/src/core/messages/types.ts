@@ -3,17 +3,22 @@
 
 export type MessageRole = "user" | "assistant" | "tool";
 
+export type AgentType = 
+  | "coordinator"
+  | "planner" 
+  | "researcher"
+  | "coder"
+  | "reporter"
+  | "podcast"
+  | "coordinator_thinking"
+  | "ChatGoogleGenerativeAI"
+  | "ChatXAI"
+  | string; // Allow flexibility for any other agent types
+
 export interface Message {
   id: string;
   threadId: string;
-  agent?:
-    | "coordinator"
-    | "planner"
-    | "researcher"
-    | "coder"
-    | "reporter"
-    | "podcast"
-    | "coordinator_thinking";
+  agent?: AgentType;
   role: MessageRole;
   isStreaming?: boolean;
   content: string;

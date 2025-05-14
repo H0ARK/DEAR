@@ -15,11 +15,16 @@ from .coordination import (
     coordinator_node,
     coding_coordinator_node,
     initial_context_node,
+    initial_context_query_generator_node,
+    initial_context_wait_for_feedback_node,
+    initial_context_feedback_handler_node,
+    initial_context_approval_router_node,
 )
 from .research import (
     background_investigation_node,
     research_team_node,
     reporter_node,
+    researcher_node,
 )
 from .coding import (
     coding_dispatcher_node,
@@ -35,7 +40,7 @@ from .integration import (
     linear_integration_node,
 )
 from .human_interaction import (
-    context_gatherer_node,
+    context_gatherer_node, # Ensure this is imported in coding_builder.py
 )
 from .utils import (
     parse_json_response,

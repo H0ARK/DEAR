@@ -46,17 +46,20 @@ export const useStore = create<{
   openResearchId: null,
 
   appendMessage(message: Message) {
+    console.log("Appending new message:", message.id, message.agent, message.content.substring(0, 20) + "...");
     set((state) => ({
       messageIds: [...state.messageIds, message.id],
       messages: new Map(state.messages).set(message.id, message),
     }));
   },
   updateMessage(message: Message) {
+    console.log("Updating message:", message.id, message.agent, message.content.substring(0, 20) + "...");
     set((state) => ({
       messages: new Map(state.messages).set(message.id, message),
     }));
   },
   updateMessages(messages: Message[]) {
+    console.log("Batch updating messages:", messages.map(m => m.id));
     set((state) => {
       const newMessages = new Map(state.messages);
       messages.forEach((m) => newMessages.set(m.id, m));
@@ -100,55 +103,96 @@ export async function sendMessage(
       thread_id: THREAD_ID,
       interrupt_feedback: interruptFeedback,
       auto_accepted_plan: settings.autoAcceptedPlan,
-      enable_background_investigation:
-        settings.enableBackgroundInvestigation ?? true,
+      enable_background_investigation: settings.enableBackgroundInvestigation ?? true,
       max_plan_iterations: settings.maxPlanIterations,
       max_step_num: settings.maxStepNum,
       mcp_settings: settings.mcpSettings,
       create_workspace: settings.createWorkspace,
+      force_interactive: false
     },
     options,
   );
 
   setResponding(true);
-  let messageId: string | undefined;
+  let activeStreamingMessageId: string | null = null;
+  
   try {
     for await (const event of stream) {
       const { type, data } = event;
-      messageId = data.id;
-      let message: Message | undefined;
-      if (type === "tool_call_result") {
-        message = findMessageByToolCallId(data.tool_call_id);
-      } else if (!existsMessage(messageId)) {
-        message = {
-          id: messageId,
-          threadId: data.thread_id,
-          agent: data.agent,
-          role: data.role,
-          content: "",
-          contentChunks: [],
-          isStreaming: true,
-          interruptFeedback,
-        };
-        appendMessage(message);
+      console.log("Received event:", type, data.id || "no event-specific id", data);
+
+      let messageToUpdate: Message | undefined;
+
+      if (type === "message_chunk" || type === "tool_calls" || type === "tool_call_chunks" || type === "interrupt") {
+        const currentEventMessageId = data.id;
+
+        if (currentEventMessageId) {
+          if (!existsMessage(currentEventMessageId)) {
+            console.log(`New message event (${type}), creating message ID: ${currentEventMessageId}`);
+            const newMessage: Message = {
+              id: currentEventMessageId,
+              threadId: data.thread_id || THREAD_ID,
+              agent: data.agent || "assistant",
+              role: data.role || "assistant",
+              content: "",
+              contentChunks: [],
+              isStreaming: true,
+              toolCalls: (type === "tool_calls" && data.tool_calls) ? data.tool_calls.map((tc: any) => ({ ...tc, argsChunks: [] })) : [],
+              // options: type === "interrupt" ? data.options : undefined, // This was interruptFeedback, ensure data.options exists
+            };
+            if (type === "interrupt" && data.options) {
+              newMessage.options = data.options;
+            }
+            appendMessage(newMessage);
+            messageToUpdate = newMessage;
+            activeStreamingMessageId = currentEventMessageId;
+          } else {
+            messageToUpdate = getMessage(currentEventMessageId);
+            activeStreamingMessageId = currentEventMessageId;
+          }
+        } else if (activeStreamingMessageId && (type === "message_chunk" || type === "tool_call_chunks")) {
+          console.log(`Chunk event (${type}) without ID, using active ID: ${activeStreamingMessageId}`);
+          messageToUpdate = getMessage(activeStreamingMessageId);
+        } else {
+          console.warn("Received event that couldn't be mapped to a message:", event);
+          continue;
+        }
+
+      } else if (type === "tool_call_result") {
+        messageToUpdate = findMessageByToolCallId(data.tool_call_id);
+        if (messageToUpdate) {
+            activeStreamingMessageId = messageToUpdate.id;
+        } else {
+            console.warn("No message found for tool_call_result:", event);
+            continue;
+        }
+      } else {
+        console.warn("Unhandled event type in stream:", type);
+        continue;
       }
-      message ??= getMessage(messageId);
-      if (message) {
-        message = mergeMessage(message, event);
+
+      if (messageToUpdate) {
+        const updatedMessage = mergeMessage(messageToUpdate, event);
+        updateMessage(updatedMessage);
+
+        if (event.data.finish_reason || (type === "interrupt")) {
+          console.log(`Stream finished for message ${messageToUpdate.id}, reason: ${event.data.finish_reason || 'interrupt'}`);
+          activeStreamingMessageId = null;
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error in chat stream:", e);
+    toast("An error occurred while generating the response. Please try again.");
+    
+    if (activeStreamingMessageId) {
+      const message = getMessage(activeStreamingMessageId);
+      if (message?.isStreaming) {
+        message.isStreaming = false;
         updateMessage(message);
       }
     }
-  } catch {
-    toast("An error occurred while generating the response. Please try again.");
-    // Update message status.
-    // TODO: const isAborted = (error as Error).name === "AbortError";
-    if (messageId != null) {
-      const message = getMessage(messageId);
-      if (message?.isStreaming) {
-        message.isStreaming = false;
-        useStore.getState().updateMessage(message);
-      }
-    }
+    
     useStore.getState().setOngoingResearch(null);
   } finally {
     setResponding(false);
@@ -299,7 +343,6 @@ export async function listenToPodcast(researchId: string) {
       try {
         audioUrl = await generatePodcast(reportMessage.content);
       } catch (e) {
-        console.error(e);
         useStore.setState((state) => ({
           messages: new Map(useStore.getState().messages).set(
             podCastMessageId,
@@ -378,3 +421,5 @@ export function useLastFeedbackMessageId() {
   );
   return waitingForFeedbackMessageId;
 }
+
+

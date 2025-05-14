@@ -46,31 +46,34 @@ export const changeSettings = (settings: SettingsState) => {
 };
 
 export const loadSettings = () => {
-  if (typeof window === "undefined") {
-    return;
-  }
-  const json = localStorage.getItem(SETTINGS_KEY);
-  if (json) {
-    const settings = JSON.parse(json);
-    for (const key in DEFAULT_SETTINGS.general) {
-      if (!(key in settings.general)) {
-        settings.general[key as keyof SettingsState["general"]] =
-          DEFAULT_SETTINGS.general[key as keyof SettingsState["general"]];
+  // Check if running in a browser environment
+  if (typeof window !== "undefined") {
+    const json = localStorage.getItem(SETTINGS_KEY);
+    if (json) {
+      const settings = JSON.parse(json);
+      for (const key in DEFAULT_SETTINGS.general) {
+        if (!(key in settings.general)) {
+          settings.general[key as keyof SettingsState["general"]] =
+            DEFAULT_SETTINGS.general[key as keyof SettingsState["general"]];
+        }
       }
-    }
 
-    try {
-      useSettingsStore.setState(settings);
-    } catch (error) {
-      console.error(error);
+      try {
+        useSettingsStore.setState(settings);
+      } catch (error) {
+        console.error(error);
+      }
     }
   }
 };
 
 export const saveSettings = () => {
-  const latestSettings = useSettingsStore.getState();
-  const json = JSON.stringify(latestSettings);
-  localStorage.setItem(SETTINGS_KEY, json);
+  // Check if running in a browser environment
+  if (typeof window !== "undefined") {
+    const latestSettings = useSettingsStore.getState();
+    const json = JSON.stringify(latestSettings);
+    localStorage.setItem(SETTINGS_KEY, json);
+  }
 };
 
 export const getChatStreamSettings = () => {

@@ -94,6 +94,11 @@ def poll_codegen_status_node(state: State, config: RunnableConfig) -> State:
         state["codegen_status"] = "failed"
         return state
     
+    # Increment poll attempts
+    poll_attempts = state.get("codegen_poll_attempts", 0) + 1
+    state["codegen_poll_attempts"] = poll_attempts
+    logger.info(f"Poll attempt: {poll_attempts}")
+
     # Simulate polling status
     # In a real implementation, this would make an API call to check the status
     

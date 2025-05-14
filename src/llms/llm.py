@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import os
+import logging
 from typing import Any, Dict, Union
 
 # Try to import Google Gemini with fallback
@@ -27,8 +28,21 @@ except ImportError:
         def __init__(self, *args, **kwargs):
             raise ImportError("OpenAI is not properly installed.")
 
+try:
+    from langchain_xai import ChatXAI
+    XAI_AVAILABLE = True
+except ImportError:
+    XAI_AVAILABLE = False
+    # Create a stub class if import fails
+    class ChatXAI:
+        def __init__(self, *args, **kwargs):
+            raise ImportError("XAI is not properly installed.")
+
 from src.config import load_yaml_config
 from src.config.agents import LLMType
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 # Cache for LLM instances
 _llm_cache = {}
@@ -55,6 +69,16 @@ def _create_llm_use_conf(llm_type: LLMType, conf: Dict[str, Any]) -> Any:
         # Make a copy to avoid modifying the original config
         gemini_params = llm_conf.copy()
 
+        # Remove any parameters that might not be supported by Gemini
+        known_unsupported = ["source"]
+        for param in known_unsupported:
+            if param in gemini_params:
+                logger.warning(f"Removing unsupported parameter for Gemini: {param}")
+                gemini_params.pop(param)
+
+        # Log all parameters being passed to Gemini
+        logger.debug(f"Gemini parameters: {gemini_params}")
+
         # Set Google API key from environment if not provided
         if "api_key" not in gemini_params and os.environ.get("GOOGLE_API_KEY"):
             gemini_params["google_api_key"] = os.environ.get("GOOGLE_API_KEY")
@@ -63,7 +87,35 @@ def _create_llm_use_conf(llm_type: LLMType, conf: Dict[str, Any]) -> Any:
     elif OPENAI_AVAILABLE:
         # Fallback to OpenAI
         print(f"Using OpenAI model: {model_name}")
-        return ChatOpenAI(**llm_conf)
+        openai_params = llm_conf.copy()
+        # Remove any parameters that might not be supported by ChatOpenAI directly
+        known_unsupported_openai = ["source", "reasoning_effort"]
+        for param in known_unsupported_openai:
+            if param in openai_params:
+                logger.warning(f"Removing unsupported parameter for ChatOpenAI: {param} from {model_name} config")
+                openai_params.pop(param)
+        logger.debug(f"OpenAI parameters for {model_name}: {openai_params}")
+        return ChatOpenAI(**openai_params)
+    elif XAI_AVAILABLE:
+        # Fallback to XAI
+        print(f"Using XAI model: {model_name}")
+        xai_params = llm_conf.copy()
+        # Remove any parameters that might not be supported by ChatXAI directly
+        known_unsupported_xai = ["reasoning_effort"] # Assuming 'source' might be relevant if it matched ChatXAI
+        if "source" in xai_params and xai_params["source"] != "ChatXAI":
+             logger.warning(f"Removing 'source: {xai_params['source']}' as it does not match ChatXAI for {model_name} config")
+             xai_params.pop("source")
+        elif "source" in xai_params and xai_params["source"] == "ChatXAI":
+             # If source is ChatXAI, it's an identifier, not an API parameter for ChatXAI model itself
+             xai_params.pop("source")
+
+
+        for param in known_unsupported_xai:
+            if param in xai_params:
+                logger.warning(f"Removing unsupported parameter for ChatXAI: {param} from {model_name} config")
+                xai_params.pop(param)
+        logger.debug(f"XAI parameters for {model_name}: {xai_params}")
+        return ChatXAI(**xai_params)
     else:
         raise ImportError("Neither Google Gemini nor OpenAI is properly installed.")
 

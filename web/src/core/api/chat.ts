@@ -1,6 +1,8 @@
 // Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 // SPDX-License-Identifier: MIT
 
+import { nanoid } from "nanoid";
+
 import { env } from "~/env";
 
 import type { MCPServerMetadata } from "../mcp";
@@ -16,6 +18,7 @@ export async function* chatStream(
   params: {
     thread_id: string;
     auto_accepted_plan: boolean;
+    force_interactive: boolean;
     max_plan_iterations: number;
     max_step_num: number;
     interrupt_feedback?: string;
@@ -40,6 +43,7 @@ export async function* chatStream(
   ) {
     return yield* chatReplayStream(userMessage, params, options);
   }
+  
   const stream = fetchStream(resolveServiceURL("chat/stream"), {
     body: JSON.stringify({
       messages: [{ role: "user", content: userMessage }],
@@ -47,11 +51,22 @@ export async function* chatStream(
     }),
     signal: options.abortSignal,
   });
-  for await (const event of stream) {
-    yield {
-      type: event.event,
-      data: JSON.parse(event.data),
-    } as ChatEvent;
+  
+  try {
+    for await (const event of stream) {
+      try {
+        const chatEvent = {
+          type: event.event,
+          data: JSON.parse(event.data),
+        } as ChatEvent;
+        
+        yield chatEvent;
+      } catch (e) {
+        console.error("Error parsing SSE event:", e, event);
+      }
+    }
+  } catch (e) {
+    throw e;
   }
 }
 
@@ -71,34 +86,43 @@ async function* chatReplayStream(
     interrupt_feedback: undefined,
   },
   options: { abortSignal?: AbortSignal } = {},
-): AsyncIterable<ChatEvent> {
-  const urlParams = new URLSearchParams(window.location.search);
-  let replayFilePath = "";
-  if (urlParams.has("mock")) {
-    if (urlParams.get("mock")) {
-      replayFilePath = `/mock/${urlParams.get("mock")!}.txt`;
-    } else {
-      if (params.interrupt_feedback === "accepted") {
-        replayFilePath = "/mock/final-answer.txt";
-      } else if (params.interrupt_feedback === "edit_plan") {
-        replayFilePath = "/mock/re-plan.txt";
-      } else {
-        replayFilePath = "/mock/first-plan.txt";
-      }
+) {
+  // Default to 1x speed if not specified
+  const speedFactor = 1;
+  const sleepInReplay = async (duration: number): Promise<void> => {
+    await sleep(duration / speedFactor);
+  };
+
+  const replayId = extractReplayIdFromSearchParams(window.location.search);
+
+  if (!replayId) {
+    const text = `event: message_chunk
+data: {"id":"${nanoid()}","thread_id":"${params.thread_id}","role":"assistant","agent":"coordinator","content":"In replay mode, I need a replay id to know what to replay. Include ?replay=XXX or make sure you are correctly loading a replay from the replay directory."}
+
+event: end
+data: {"thread_id":"${params.thread_id}"}
+`;
+    const chunks = text.split("\n\n");
+    for (const chunk of chunks) {
+      const [eventRaw, dataRaw] = chunk.split("\n") as [string, string];
+      const [, event] = eventRaw.split("event: ", 2) as [string, string];
+      const [, data] = dataRaw.split("data: ", 2) as [string, string];
+      yield {
+        type: event,
+        data: JSON.parse(data),
+      } as ChatEvent;
+      await sleepInReplay(500);
     }
-    fastForwardReplaying = true;
-  } else {
-    const replayId = extractReplayIdFromSearchParams(window.location.search);
-    if (replayId) {
-      replayFilePath = `/replay/${replayId}.txt`;
-    } else {
-      // Fallback to a default replay
-      replayFilePath = `/replay/eiffel-tower-vs-tallest-building.txt`;
-    }
+    return;
   }
-  const text = await fetchReplay(replayFilePath, {
-    abortSignal: options.abortSignal,
-  });
+
+  const replayFilePath = `/replay/${replayId}.json`;
+  // Use RequestInit instead of custom options type
+  const fetchOptions: RequestInit = {
+    signal: options.abortSignal
+  };
+  
+  const text = await (await fetch(replayFilePath, fetchOptions)).text();
   const chunks = text.split("\n\n");
   for (const chunk of chunks) {
     const [eventRaw, dataRaw] = chunk.split("\n") as [string, string];
@@ -126,7 +150,7 @@ async function* chatReplayStream(
         }
       }
     } catch (e) {
-      console.error(e);
+      console.error("Failed to parse chunk", e, chunk);
     }
   }
 }

@@ -16,14 +16,17 @@ import type { Message } from "./types";
 export function mergeMessage(message: Message, event: ChatEvent) {
   if (event.type === "message_chunk") {
     mergeTextMessage(message, event);
+    
+    // Handle finish state for message_chunk events
+    if (event.data.finish_reason) {
+      message.finishReason = event.data.finish_reason;
+      message.isStreaming = false;
+    }
   } else if (event.type === "tool_calls" || event.type === "tool_call_chunks") {
     mergeToolCallMessage(message, event);
-  } else if (event.type === "tool_call_result") {
-    mergeToolCallResultMessage(message, event);
-  } else if (event.type === "interrupt") {
-    mergeInterruptMessage(message, event);
-  }
-  if (event.data.finish_reason) {
+    
+    // Handle finish state for tool events
+    if (event.data.finish_reason) {
     message.finishReason = event.data.finish_reason;
     message.isStreaming = false;
     if (message.toolCalls) {
@@ -34,7 +37,13 @@ export function mergeMessage(message: Message, event: ChatEvent) {
         }
       });
     }
+    }
+  } else if (event.type === "tool_call_result") {
+    mergeToolCallResultMessage(message, event);
+  } else if (event.type === "interrupt") {
+    mergeInterruptMessage(message, event);
   }
+  
   return deepClone(message);
 }
 

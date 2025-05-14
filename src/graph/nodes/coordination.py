@@ -5,6 +5,7 @@ from typing import Literal
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
+from langgraph.errors import GraphInterrupt
 
 from .common import *
 from .planning import handoff_to_planner
@@ -211,6 +212,7 @@ def initial_context_node(state: State, config: RunnableConfig) -> Command[Litera
         # Update the state with the initial context
         updated_state = state.copy()
         updated_state["initial_context"] = initial_context
+        updated_state["initial_context_summary"] = initial_context[:100] + "..." # Truncate to 100 chars for summary
         
         # Proceed to the coding coordinator
         return Command(update=updated_state, goto="coding_coordinator")
@@ -225,4 +227,72 @@ def initial_context_node(state: State, config: RunnableConfig) -> Command[Litera
             },
             goto="__end__"
         )
+
+
+def initial_context_query_generator_node(state: State, config: RunnableConfig) -> State:
+    """Generates the query/summary for human review of initial context."""
+    logger.info("Initial context query generator node executing...")
+    
+    # This node would typically:
+    # 1. Get initial_context_summary or generate one if not present.
+    # 2. Formulate a question for the user.
+    initial_context_summary = state.get("initial_context_summary", "No initial context gathered yet.")
+    query = f"I've gathered the following initial context about your project:\\n\\n{initial_context_summary}\\n\\nPlease review this information. Is this understanding correct and complete? If not, what should be changed or added?"
+    
+    iterations = state.get("initial_context_iterations", 0) + 1
+    
+    # THIS IS THE KEY: Signal to the graph to interrupt and wait for external feedback
+    logger.critical(f"GRAPH: initial_context_query_generator_node DETECTED need for human input. Raising InterruptException.")
+    raise GraphInterrupt()
+
+def initial_context_wait_for_feedback_node(state: State, config: RunnableConfig) -> State:
+    """(Placeholder) Waits for human feedback on the initial context.
+    In a real interruptible system, this node might not do much if the interrupt
+    is handled by the graph executor. If using explicit 'human_tool', this would invoke it.
+    For our current explicit state-driven loop, this node might just ensure state is set for UI.
+    """
+    logger.info("Initial context wait for feedback node executing (placeholder)...")
+    # The actual waiting/interrupt is managed by how the graph is run and how UI interacts.
+    # This node ensures the state `awaiting_initial_context_input` is True if not already.
+    if not state.get("awaiting_initial_context_input"):
+        logger.warning("initial_context_wait_for_feedback_node: awaiting_initial_context_input was False. Forcing to True.")
+        return {"awaiting_initial_context_input": True}
+    return {} # No state change if already awaiting
+
+def initial_context_feedback_handler_node(state: State, config: RunnableConfig) -> State:
+    """Handles the feedback received from the user about the initial context."""
+    logger.info("Initial context feedback handler node executing...")
+    
+    user_feedback = state.get("last_initial_context_feedback") # This should be populated by the streaming endpoint
+    
+    updated_messages = state.get("messages", [])
+    if user_feedback:
+        updated_messages = updated_messages + [HumanMessage(content=user_feedback, name="user_initial_context_feedback")]
+        logger.info(f"Processed user feedback: {user_feedback[:100]}...")
+    else:
+        logger.warning("No user feedback found in last_initial_context_feedback.")
+
+    # Logic to determine if feedback implies approval
+    approved = False
+    if user_feedback and any(kw in user_feedback.lower() for kw in ["approve", "looks good", "correct", "proceed"]):
+        approved = True
+        logger.info("User feedback indicates approval.")
+        
+    return {
+        "initial_context_approved": approved,
+        "awaiting_initial_context_input": False, # No longer awaiting input for this cycle
+        "pending_initial_context_query": None, # Clear the last query
+        "messages": updated_messages
+        # last_initial_context_feedback is kept as a record, cleared by query_generator if new iteration starts
+    }
+
+def initial_context_approval_router_node(state: State, config: RunnableConfig) -> Command[Literal["coding_coordinator", "initial_context_query_generator"]]:
+    """Routes based on whether the initial context was approved."""
+    logger.info("Initial context approval router node executing...")
+    if state.get("initial_context_approved"):
+        logger.info("Initial context approved. Proceeding to coding_coordinator.")
+        return Command(goto="coding_coordinator")
+    else:
+        logger.info("Initial context not approved or needs more iterations. Looping back to query generator.")
+        return Command(goto="initial_context_query_generator")
 
