@@ -1,12 +1,7 @@
 {
   "dockerfile_lines": [],
   "graphs": {
-    "deep_research": "./src/workflow.py:graph",
-    "podcast_generation": "./src/podcast/graph/builder.py:workflow",
-    "ppt_generation": "./src/ppt/graph/builder.py:workflow",
-    "coding": "./src/graph/coding_builder.py:coding_graph",
-    "prose": "./src/prose/graph/builder.py:workflow",
-    "research": "./src/graph/builder.py:graph"
+    "coding": "./src/workflow.py:graph"
   },
   "python_version": "3.12",
   "env": "./.env",
@@ -19,7 +14,7 @@
     "python-dotenv>=1.0.1",
     "fastapi>=0.110.0",
     "uvicorn>=0.27.1",
-    "sse-starlette>=1.6.5",
+    "sse-starlette~=2.3.5",
     "json-repair>=0.7.0",
     "mcp>=1.6.0",
     "langchain-mcp-adapters>=0.0.9",

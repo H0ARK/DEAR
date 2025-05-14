@@ -1,0 +1,9 @@
+Starting DeerFlow in [PRODUCTION] mode...
+
+Using Google Gemini model: gemini-2.5-flash-preview-04-17
+Successfully initialized LLM
+
+> deer-flow-web@0.1.0 start /Users/conrad/Documents/github/DEAR/web
+> next start
+
+ ELIFECYCLE  Command failed with exit code 1.

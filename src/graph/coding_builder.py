@@ -49,15 +49,32 @@ from .visualizer import save_graph_visualization, get_graph_mermaid_syntax
 
 logger = logging.getLogger(__name__)
 
+# --- Define passthrough end node functions ---
+def initial_context_passthrough_end_node(state: State) -> State:
+    logger.debug("Reached initial_context_passthrough_end_node")
+    return state
+
+def coordinator_passthrough_end_node(state: State) -> State:
+    logger.debug("Reached coordinator_passthrough_end_node")
+    return state
+
+def orchestrator_passthrough_end_node(state: State) -> State:
+    logger.debug("Reached orchestrator_passthrough_end_node")
+    return state
+
 # --- Define edge routing functions ---
 
 def get_initial_context_routing_decision(state: State) -> str:
     """Reads the routing decision made by initial_context_approval_router_node."""
     decision = state.get("initial_context_routing_decision")
-    if not decision:
-        logger.error("Initial context routing decision not found in state! Defaulting to end.")
-        return END # Or handle error appropriately
+    if not decision: # E.g. if initial_context_approval_router_node didn't set it
+        logger.error("Initial context routing decision not found in state! Defaulting to custom end for initial context.")
+        return "go_to_initial_context_final_end" # MODIFIED: return unique string for END
     logger.info(f"Routing based on initial_context_routing_decision: {decision}")
+    # Ensure 'decision' is one of the expected strings by the map later
+    if decision not in ["coding_coordinator", "refine_initial_context_loop"]: # Assuming these are the only non-end paths
+        logger.warning(f"Unexpected decision '{decision}' from initial_context_approval_router. Forcing to initial context end.")
+        return "go_to_initial_context_final_end"
     return decision
 
 def route_after_initial_context_review(state: State) -> Literal["coding_coordinator", "initial_context_query_generator"]:
@@ -128,7 +145,7 @@ def route_from_research_team(state: State) -> Literal["researcher", "task_orches
 # Placeholder for PRD review logic (similar to above but for PRD)
 # The human_prd_review_node will set 'prd_review_feedback' in state.
 # coding_coordinator_node will use 'prd_review_feedback'
-def route_from_coordinator(state: State) -> Literal["context_gatherer", "coding_planner", "__end__"]:
+def route_from_coordinator(state: State) -> Literal["context_gatherer", "coding_planner", "go_to_coordinator_final_end"]:
     # This function will read state set by coding_coordinator_node
 
     # Add detailed logging
@@ -143,51 +160,44 @@ def route_from_coordinator(state: State) -> Literal["context_gatherer", "coding_
 
     # Direct bypass in non-interactive mode
     if state.get("simulated_input", False):
-        # Check if we have a PRD document and approved status
         if state.get("prd_document") and state.get("prd_status") == "approved":
             logger.info("Simulated input mode: PRD already approved, proceeding to coding planner.")
             return "coding_planner"
-        # If we have a PRD document but not explicit approval yet
         elif state.get("prd_document"):
             logger.info("Simulated input mode: PRD exists but needs review approval.")
             return "context_gatherer"
-        # In non-interactive mode with no PRD, the coding_coordinator should have created one
-        # If we reach here, something might have gone wrong but we try to proceed
         else:
             logger.info("Simulated input mode: No PRD document yet, routing to context_gatherer to generate one.")
             return "context_gatherer"
 
-    # Check if coordinator specifically set the prd_next_step
     next_step = state.get("prd_next_step")
     if next_step:
         logger.info(f"Using explicit prd_next_step: {next_step}")
+        # Ensure next_step is a valid key for this router's map, excluding the end case handled below
+        if next_step not in ["context_gatherer", "coding_planner", "human_prd_review"]: # human_prd_review added as it's in map for coding_coordinator
+             logger.warning(f"Invalid prd_next_step '{next_step}' for coordinator. Defaulting to coordinator end.")
+             return "go_to_coordinator_final_end"
         return next_step
 
-    # Check for approval flag or feedback that indicates approval
     if state.get("prd_approved") or state.get("prd_status") == "approved":
         logger.info("PRD is approved, routing to coding planner.")
         return "coding_planner"
 
-    # Check for approval in feedback
     prd_review_feedback = state.get("prd_review_feedback", "").lower()
     if "approve" in prd_review_feedback or "accept" in prd_review_feedback or "good" in prd_review_feedback:
         logger.info("PRD approval detected in feedback, routing to coding planner.")
         return "coding_planner"
 
-    # If we have a PRD document but no specific next step or approval
     if state.get("prd_document") and state.get("prd_status") == "awaiting_review":
         logger.info("PRD document exists and awaiting review, routing to context_gatherer.")
         return "context_gatherer"
 
-    # If we have no PRD document yet
     if not state.get("prd_document"):
-        # The coordinator should have created one, but if not for some reason...
         logger.info("No PRD document yet, letting coordinator try again.")
         return "context_gatherer"
 
-    # Default to ending if we hit an unexpected state
-    logger.info("No clear routing decision could be made, defaulting to __end__")
-    return "__end__"
+    logger.info("No clear routing decision could be made by coordinator, defaulting to coordinator end.")
+    return "go_to_coordinator_final_end" # MODIFIED: return unique string for END
 
 MAX_CODEGEN_POLL_ATTEMPTS = 10 # Define a max attempts for polling
 
@@ -248,7 +258,10 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
     builder.add_node("codegen_failure", codegen_failure_node)
 
     builder.add_node("github_manager", github_manager_node)
-    # builder.add_node("coder", coder_node) # Temporarily disconnected
+    # Use dedicated functions for passthrough end nodes
+    builder.add_node("initial_context_final_end_node", initial_context_passthrough_end_node)
+    builder.add_node("coordinator_final_end_node", coordinator_passthrough_end_node)
+    builder.add_node("orchestrator_final_end_node", orchestrator_passthrough_end_node)
 
     # --- Define Simplified Edges ---
     # START FLOW: Initial context gathering → specialized nodes for review → coordinator
@@ -261,45 +274,43 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
     builder.add_edge("initial_context_query_generator", "initial_context_wait_for_feedback")
     builder.add_edge("initial_context_wait_for_feedback", "initial_context_feedback_handler")
     builder.add_edge("initial_context_feedback_handler", "initial_context_approval_router")
+    # REMOVED: builder.add_edge("initial_context_final_end_node", END) # ADDED <- Will be re-added after conditional
 
     # Conditional routing from the approval router (initial context)
     builder.add_conditional_edges(
-        "initial_context_approval_router",      # Source node name in the graph
-        get_initial_context_routing_decision, # Use the new explicit routing function
-        {                                       # Map: output string from routing_func -> target node name in graph
+        "initial_context_approval_router",
+        get_initial_context_routing_decision,
+        {
             "coding_coordinator": "coding_coordinator",
-            "refine_initial_context_loop": "initial_context"
+            "refine_initial_context_loop": "initial_context",
+            "go_to_initial_context_final_end": "initial_context_final_end_node"
         }
     )
-
-    # Keep the legacy node connected but route to the new flow
-    # builder.add_edge("human_initial_context_review", "initial_context_query_generator") # Or remove if fully deprecated
-    # For now, let's assume human_initial_context_review_node (if called) would also use the new routing.
-    # However, this node is in planning.py and might be different from the one in coordination.py
-    # To be safe, if it's used, it should route via its own logic or be removed from active graph if superseded.
-    # Given the new initial_context_* nodes, the direct human_initial_context_review might be deprecated from START.
-    # The one in planning.py is handled by refactor, if it is still wired up, it would need its own conditional edge or removal.
-
+    # Ensure final end node is connected AFTER the conditional edge that might route to it
+    builder.add_edge("initial_context_final_end_node", END)
 
     # PRD BUILDING LOOP: 
     # coding_coordinator decides if PRD needs creation/update, then goes to human_prd_review
     builder.add_conditional_edges(
         "coding_coordinator",
-        route_from_coordinator, # This existing router decides if PRD is needed, or research, or plan
+        route_from_coordinator,
         {
             "context_gatherer": "context_gatherer",
-            "coding_planner": "coding_planner", # Directly to planner if PRD already approved
-            "__end__": END,
+            "coding_planner": "coding_planner",
+            "human_prd_review": "human_prd_review",
+            "go_to_coordinator_final_end": "coordinator_final_end_node"
         }
     )
+    builder.add_edge("coordinator_final_end_node", END)
+
     # After human reviews PRD, route based on their feedback
     builder.add_conditional_edges(
-        "human_prd_review", # Added source node
+        "human_prd_review",
         route_after_prd_review,
         {
             "coding_planner": "coding_planner",
-            "coding_coordinator": "coding_coordinator", # Loop back to coordinator for revisions
-            "human_prd_review": "human_prd_review" # Added loop back to self if still awaiting input
+            "coding_coordinator": "coding_coordinator",
+            "human_prd_review": "human_prd_review"
         }
     )
 
@@ -312,56 +323,60 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
             "researcher": "researcher",
             "task_orchestrator": "task_orchestrator",
             "coding_coordinator": "coding_coordinator",
-            "coding_planner": "coding_planner" # Added this path
+            "coding_planner": "coding_planner"
         }
     )
-    builder.add_edge("researcher", "research_team") # Researcher reports back to team
+    builder.add_edge("researcher", "research_team")
 
     # TASK PLANNING LOOP: 
-    # coding_planner (after PRD approved) creates a plan, then goes to human_feedback_plan
     builder.add_edge("coding_planner", "human_feedback_plan")
 
-    # After human reviews the plan, route based on their feedback
     builder.add_conditional_edges(
-        "human_feedback_plan", # Added source node
+        "human_feedback_plan",
         route_after_plan_review,
         {
-            "linear_integration": "linear_integration", # Plan approved
-            "coding_planner": "coding_planner",         # Revisions requested
-            "human_feedback_plan": "human_feedback_plan" # Added loop back to self if still awaiting input
+            "linear_integration": "linear_integration",
+            "coding_planner": "coding_planner",
+            "human_feedback_plan": "human_feedback_plan"
         }
     )
     
-    # After linear_integration, if successful, effectively moves to task execution or completion.
-    # For now, let's assume linear_integration is a step before orchestrator or END.
-    # The example from human_feedback_plan used to go to 'linear_integration'.
-    # What comes after linear_integration? Assuming task_orchestrator for now.
     builder.add_edge("linear_integration", "task_orchestrator")
 
-
     # TASK EXECUTION LOOP (Task Orchestrator and Codegen)
-    def route_from_orchestrator(state: State) -> Literal["initiate_codegen", "coding_planner", "__end__"]:
-        # This logic will be implemented in task_orchestrator_node Python function.
-        # It will check the task queue, dependencies, and outcomes.
-        # It sets a 'orchestrator_next_step' in state.
-        orchestrator_decision = state.get("orchestrator_next_step", "__end__") # Default to end if no decision
+    def route_from_orchestrator(state: State) -> Literal["initiate_codegen", "coding_planner", "research_team", "go_to_orchestrator_final_end"]:
+        orchestrator_decision = state.get("orchestrator_next_step") # Default handled by map if key not found
+        logger.info(f"Routing from task_orchestrator based on orchestrator_next_step: {orchestrator_decision}")
+
         if orchestrator_decision == "dispatch_task_for_codegen":
             return "initiate_codegen"
         elif orchestrator_decision == "forward_failure_to_planner":
             return "coding_planner"
-        elif orchestrator_decision == "all_tasks_complete":
-            return "__end__"
-        return "__end__" # Fallback
+        elif orchestrator_decision == "dispatch_task_for_research": # Assuming task_orchestrator can route to research
+            return "research_team"
+        elif orchestrator_decision == "all_tasks_complete" or not orchestrator_decision: # also if None or empty
+            logger.info("Orchestrator: All tasks complete or no specific next step. Routing to orchestrator end.")
+            return "go_to_orchestrator_final_end"
+        
+        # If orchestrator_decision is some other string not in the map, it will lead to an error.
+        # Add a fallback or ensure task_orchestrator_node only sets valid strings.
+        valid_steps = ["initiate_codegen", "coding_planner", "research_team", "go_to_orchestrator_final_end"]
+        if orchestrator_decision not in valid_steps:
+            logger.warning(f"Orchestrator: Invalid step '{orchestrator_decision}'. Defaulting to orchestrator end.")
+            return "go_to_orchestrator_final_end"
+        return orchestrator_decision # Should be one of the valid_steps or "go_to_orchestrator_final_end"
 
     builder.add_conditional_edges(
         "task_orchestrator",
         route_from_orchestrator,
         {
-            "initiate_codegen": "initiate_codegen",     # Orchestrator dispatches a task
-            "coding_planner": "coding_planner",         # Send failures back to planner
-            "__end__": END                              # All tasks done
+            "initiate_codegen": "initiate_codegen",
+            "coding_planner": "coding_planner",
+            "research_team": "research_team",
+            "go_to_orchestrator_final_end": "orchestrator_final_end_node"
         }
     )
+    builder.add_edge("orchestrator_final_end_node", END)
 
     # CODEGEN FLOW
     builder.add_edge("initiate_codegen", "poll_codegen_status")
@@ -376,18 +391,15 @@ def build_coding_graph_base(checkpointer=None, use_interrupts=True): # Renamed t
         },
     )
 
-    # Codegen outcomes feed back to the orchestrator
     builder.add_edge("codegen_failure", "task_orchestrator")
     builder.add_edge("codegen_success", "github_manager")
-
-    # GitHub manager feeds back to orchestrator on successful merge/completion of a task
     builder.add_edge("github_manager", "task_orchestrator")
 
     if use_interrupts and checkpointer is not None:
         return builder.compile(
             checkpointer=checkpointer,
             interrupt_before=[
-                "initial_context_wait_for_feedback",  # New specialized node for waiting for feedback
+                "initial_context_wait_for_feedback",
             ]
         )
     else:
@@ -399,16 +411,16 @@ def build_coding_graph():
     return build_coding_graph_base(checkpointer=None, use_interrupts=False)
 
 # Create a graph for interactive use (with interrupts)
-def build_interactive_coding_graph():
+def build_interactive_coding_graph(checkpointer: MemorySaver): # Accept checkpointer
     """Build a coding graph with memory persistence for interactive use."""
-    memory = MemorySaver()
-    return build_coding_graph_base(checkpointer=memory, use_interrupts=True)
+    # memory = MemorySaver() # No longer created here
+    return build_coding_graph_base(checkpointer=checkpointer, use_interrupts=True)
 
 # Create a persisted graph with memory
-def build_coding_graph_with_memory():
+def build_coding_graph_with_memory(checkpointer: MemorySaver): # Accept checkpointer
     """Build a coding graph with memory persistence."""
-    memory = MemorySaver()
-    return build_coding_graph_base(checkpointer=memory, use_interrupts=False)
+    # memory = MemorySaver() # No longer created here
+    return build_coding_graph_base(checkpointer=checkpointer, use_interrupts=False)
 
 # Visualization helper
 def visualize_coding_graph(graph=None):

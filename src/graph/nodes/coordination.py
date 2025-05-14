@@ -268,30 +268,31 @@ def initial_context_feedback_handler_node(state: State, config: RunnableConfig) 
     """Handles the feedback received from the user about the initial context."""
     logger.info("Initial context feedback handler node executing...")
     
-    user_feedback = state.get("last_initial_context_feedback") # This should be populated by the streaming endpoint
+    user_feedback = state.get("last_initial_context_feedback") 
     
-    updated_messages = state.get("messages", [])
+    messages_to_add = []
     if user_feedback:
-        updated_messages = updated_messages + [HumanMessage(content=user_feedback, name="user_initial_context_feedback")]
+        messages_to_add.append(HumanMessage(content=user_feedback, name="user_initial_context_feedback"))
         logger.info(f"Processed user feedback: {user_feedback[:100]}...")
     else:
         logger.warning("No user feedback found in last_initial_context_feedback.")
 
-    # Logic to determine if feedback implies approval
     approved = False
     if user_feedback and any(kw in user_feedback.lower() for kw in ["approve", "looks good", "correct", "proceed"]):
         approved = True
         logger.info("User feedback indicates approval.")
         
-    return {
+    update_dict = {
         "initial_context_approved": approved,
-        "awaiting_initial_context_input": False, # No longer awaiting input for this cycle
-        "pending_initial_context_query": None, # Clear the last query
-        "messages": updated_messages
-        # last_initial_context_feedback is kept as a record, cleared by query_generator if new iteration starts
+        "awaiting_initial_context_input": False, 
+        "pending_initial_context_query": None, 
     }
+    if messages_to_add: # Only add messages key if there are new messages
+        update_dict["messages"] = messages_to_add
+        
+    return update_dict
 
-def initial_context_approval_router_node(state: State, config: RunnableConfig) -> dict: # Return dict for state update
+def initial_context_approval_router_node(state: State, config: RunnableConfig) -> dict:
     """Routes based on whether the initial context was approved. Updates state with routing decision."""
     logger.info("Initial context approval router node executing...")
     updated_state = state.copy()

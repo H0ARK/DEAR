@@ -11,11 +11,15 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk, ToolMessage, BaseMessage
 from langgraph.types import Command
+from langgraph.checkpoint.memory import MemorySaver
 
 from src.graph import build_graph_with_memory
 from src.server.chat_request import ChatRequest, ChatMessage, RepositoryInfo
 
 logger = logging.getLogger(__name__)
+
+# Global MemorySaver instance
+shared_memory_checkpointer = MemorySaver()
 
 def register_chat_routes(app: FastAPI):
     """Register chat-related routes with the FastAPI app."""
@@ -56,26 +60,33 @@ def register_chat_routes(app: FastAPI):
         locale: str = "en-US",
     ):
         """Generate a stream of events from the workflow."""
-        # Convert messages to the format expected by the graph
-        converted_messages = []
-        for message in messages:
+        # Convert only the latest message to the format expected by the graph
+        # Assumes the client sends messages in order, and the last one is the newest.
+        latest_message_converted = []
+        if messages: # If there are any messages
+            message = messages[-1] # Get the last message
             if message.role == "user":
-                converted_messages.append({"type": "human", "content": message.content})
-            elif message.role == "assistant":
-                converted_messages.append({"type": "ai", "content": message.content})
-            elif message.role == "system":
-                converted_messages.append({"type": "system", "content": message.content})
+                latest_message_converted.append({"type": "human", "content": message.content})
+            elif message.role == "assistant": # Should generally not be the latest input, but handle defensively
+                latest_message_converted.append({"type": "ai", "content": message.content})
+            elif message.role == "system": # System messages usually aren't part of iterative chat input this way
+                latest_message_converted.append({"type": "system", "content": message.content})
             elif message.role == "tool":
-                converted_messages.append(
+                latest_message_converted.append(
                     {
                         "type": "tool",
                         "content": message.content,
                         "tool_call_id": message.tool_call_id,
                     }
                 )
+        
+        if not latest_message_converted and not user_feedback_payload: # If no new message and no feedback, it's problematic
+            logger.warning("No new message to process in _astream_workflow_generator and no feedback payload.")
+            # Depending on desired behavior, you might want to yield an error or handle differently.
+            # For now, we'll proceed, but the graph might not have new input to act on unless feedback is present.
 
-        # Build the graph with memory
-        graph = build_graph_with_memory()
+        # Build the graph with the shared memory checkpointer
+        graph = build_graph_with_memory(checkpointer=shared_memory_checkpointer)
 
         # Prepare the config
         config = {
@@ -91,7 +102,7 @@ def register_chat_routes(app: FastAPI):
 
         # Prepare the input
         input_data = {
-            "messages": converted_messages,
+            "messages": latest_message_converted, # Use only the latest converted message
             "enable_background_investigation": enable_background_investigation,
             "force_interactive": force_interactive,
         }
