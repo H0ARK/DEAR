@@ -1,0 +1,34 @@
+name: Branch Protection
+
+on:
+  push:
+    branches: [ 'main' ]
+
+jobs:
+  enforce-branch-protection:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Check if push is direct to main
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        # Get the commit author
+        AUTHOR=$(git log -1 --pretty=format:'%an <%ae>')
+        
+        # Check if the commit is from a GitHub Action
+        if [[ "$AUTHOR" == "github-actions[bot] <github-actions[bot]@users.noreply.github.com>" ]]; then
+          echo "Commit is from GitHub Actions, allowing..."
+          exit 0
+        fi
+        
+        # Check if the commit is a merge commit
+        if [[ $(git log -1 --pretty=%P | wc -w) -gt 1 ]]; then
+          echo "Commit is a merge commit, allowing..."
+          exit 0
+        fi
+        
+        echo "::error::Direct pushes to main branch are not allowed. Please create a pull request instead."
+        exit 1
+

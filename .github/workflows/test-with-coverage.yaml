@@ -1,0 +1,39 @@
+name: Tests with Coverage
+
+on:
+  push:
+    branches: [ 'main' ]
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  test-with-coverage:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # Fetch all history for proper coverage reporting
+
+    - name: Install the latest version of uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+
+    - name: Install dependencies
+      run: |
+        uv venv --python 3.12
+        uv pip install -e ".[dev]"
+        uv pip install -e ".[test]"
+        uv pip install codecov
+
+    - name: Run tests with coverage
+      run: |
+        source .venv/bin/activate
+        TAVILY_API_KEY=mock-key pytest tests/ --cov=src --cov-report=xml --cov-report=term
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+

@@ -1,0 +1,44 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ 'main' ]
+  pull_request:
+    branches: [ '*' ]
+  schedule:
+    - cron: '0 0 * * 0'  # Run weekly on Sunday at midnight
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install the latest version of uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+
+    - name: Install dependencies
+      run: |
+        uv venv --python 3.12
+        uv pip install -e ".[dev]"
+        uv pip install -e ".[test]"
+        uv pip install bandit safety
+
+    - name: Run Bandit security scanner
+      run: |
+        source .venv/bin/activate
+        bandit -r src/ -x tests/ -f json -o bandit-results.json || true
+      
+    - name: Run Safety dependency check
+      run: |
+        source .venv/bin/activate
+        safety check --full-report || true
+        
+    - name: Upload security scan results
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-scan-results
+        path: bandit-results.json
+
