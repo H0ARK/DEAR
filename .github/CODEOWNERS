@@ -1,0 +1,16 @@
+# These owners will be the default owners for everything in the repo.
+# Unless a later match takes precedence, they will be requested for
+# review when someone opens a pull request.
+*       @H0ARK/maintainers
+
+# Critical infrastructure files
+.github/workflows/   @H0ARK/maintainers
+Makefile             @H0ARK/maintainers
+pyproject.toml       @H0ARK/maintainers
+
+# Core source code
+/src/                @H0ARK/maintainers
+
+# Tests
+/tests/              @H0ARK/maintainers
+
