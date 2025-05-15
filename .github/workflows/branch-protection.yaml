@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Check if push is direct to main
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'

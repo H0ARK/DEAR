@@ -12,7 +12,7 @@ jobs:
   security-scan:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install the latest version of uv
       uses: astral-sh/setup-uv@v5
@@ -37,8 +37,7 @@ jobs:
         safety check --full-report || true
         
     - name: Upload security scan results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: security-scan-results
         path: bandit-results.json
-
